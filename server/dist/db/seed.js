@@ -380,6 +380,19 @@ export function seedDatabase() {
         `).run(total, customerId);
             }
         }
+        // Create payments for orders
+        const paidOrders = db.prepare(`
+      SELECT id, total, customer_id, created_at FROM orders
+      WHERE bakery_id = ? AND payment_status = 'paid'
+    `).all(bakeryId);
+        const paymentMethods = ['pix', 'cash', 'card'];
+        for (const paidOrder of paidOrders) {
+            const method = paymentMethods[Math.floor(Math.random() * paymentMethods.length)];
+            db.prepare(`
+        INSERT INTO payments (id, bakery_id, order_id, customer_id, amount, method, status, reference, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(uuidv4(), bakeryId, paidOrder.id, paidOrder.customer_id, paidOrder.total, method, 'completed', method === 'pix' ? `PIX-${Math.floor(Math.random() * 1000000)}` : null, paidOrder.created_at);
+        }
         // Create ingredients (for starter+ tiers)
         if (baker.tier !== 'free') {
             const ingredients = [

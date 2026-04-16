@@ -746,6 +746,252 @@ router.put('/onboarding/:step', (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+// GET /baker/payments
+router.get('/payments', (req, res) => {
+    try {
+        const bakeryId = getBakeryId(req.user.id);
+        const page = parseInt(req.query.page || '1');
+        const limit = parseInt(req.query.limit || '50');
+        const offset = (page - 1) * limit;
+        const method = req.query.method || '';
+        let query = `
+      SELECT p.*, c.name as customer_name, o.order_number
+      FROM payments p
+      LEFT JOIN customers c ON p.customer_id = c.id
+      LEFT JOIN orders o ON p.order_id = o.id
+      WHERE p.bakery_id = ?
+    `;
+        const params = [bakeryId];
+        if (method) {
+            query += ` AND p.method = ?`;
+            params.push(method);
+        }
+        query += ` ORDER BY p.created_at DESC LIMIT ? OFFSET ?`;
+        params.push(limit, offset);
+        const payments = db.prepare(query).all(...params);
+        let countQuery = 'SELECT COUNT(*) as count FROM payments WHERE bakery_id = ?';
+        const countParams = [bakeryId];
+        if (method) {
+            countQuery += ` AND method = ?`;
+            countParams.push(method);
+        }
+        const totalCount = db.prepare(countQuery).get(...countParams);
+        // Payment summary
+        const summary = db.prepare(`
+      SELECT
+        COALESCE(SUM(amount), 0) as total_received,
+        COUNT(*) as total_payments,
+        COALESCE(SUM(CASE WHEN method = 'pix' THEN amount ELSE 0 END), 0) as pix_total,
+        COALESCE(SUM(CASE WHEN method = 'cash' THEN amount ELSE 0 END), 0) as cash_total,
+        COALESCE(SUM(CASE WHEN method = 'card' THEN amount ELSE 0 END), 0) as card_total,
+        COUNT(CASE WHEN method = 'pix' THEN 1 END) as pix_count,
+        COUNT(CASE WHEN method = 'cash' THEN 1 END) as cash_count,
+        COUNT(CASE WHEN method = 'card' THEN 1 END) as card_count
+      FROM payments
+      WHERE bakery_id = ? AND status = 'completed'
+    `).get(bakeryId);
+        // This month
+        const firstOfMonth = new Date();
+        firstOfMonth.setDate(1);
+        const monthSummary = db.prepare(`
+      SELECT
+        COALESCE(SUM(amount), 0) as month_total,
+        COUNT(*) as month_count
+      FROM payments
+      WHERE bakery_id = ? AND status = 'completed' AND created_at >= ?
+    `).get(bakeryId, firstOfMonth.toISOString());
+        res.json({
+            payments,
+            summary: { ...summary, ...monthSummary },
+            pagination: {
+                page,
+                limit,
+                total: totalCount.count,
+                pages: Math.ceil(totalCount.count / limit),
+            },
+        });
+    }
+    catch (err) {
+        console.error('Get payments error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+// POST /baker/payments
+router.post('/payments', (req, res) => {
+    try {
+        const bakeryId = getBakeryId(req.user.id);
+        const { orderId, customerId, amount, method, reference, notes } = req.body;
+        if (!amount || !method) {
+            return res.status(400).json({ error: 'Amount and method required' });
+        }
+        const paymentId = uuidv4();
+        const now = new Date().toISOString();
+        db.prepare(`
+      INSERT INTO payments (id, bakery_id, order_id, customer_id, amount, method, status, reference, notes, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(paymentId, bakeryId, orderId || null, customerId || null, amount, method, 'completed', reference || null, notes || null, now);
+        // If linked to an order, update payment status
+        if (orderId) {
+            const order = db.prepare('SELECT total FROM orders WHERE id = ? AND bakery_id = ?').get(orderId, bakeryId);
+            if (order) {
+                const totalPaid = db.prepare('SELECT COALESCE(SUM(amount), 0) as paid FROM payments WHERE order_id = ? AND status = ?').get(orderId, 'completed');
+                const newStatus = totalPaid.paid >= order.total ? 'paid' : 'partial';
+                db.prepare('UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ?').run(newStatus, now, orderId);
+            }
+        }
+        const payment = db.prepare(`
+      SELECT p.*, c.name as customer_name, o.order_number
+      FROM payments p
+      LEFT JOIN customers c ON p.customer_id = c.id
+      LEFT JOIN orders o ON p.order_id = o.id
+      WHERE p.id = ?
+    `).get(paymentId);
+        res.status(201).json(payment);
+    }
+    catch (err) {
+        console.error('Create payment error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+// GET /baker/reports
+router.get('/reports', (req, res) => {
+    try {
+        const bakeryId = getBakeryId(req.user.id);
+        // Revenue by month (last 12 months)
+        const revenueByMonth = db.prepare(`
+      SELECT
+        strftime('%Y-%m', created_at) as month,
+        COALESCE(SUM(total), 0) as revenue,
+        COUNT(*) as order_count
+      FROM orders
+      WHERE bakery_id = ? AND created_at >= date('now', '-12 months')
+      GROUP BY strftime('%Y-%m', created_at)
+      ORDER BY month
+    `).all(bakeryId);
+        // Orders by status
+        const ordersByStatus = db.prepare(`
+      SELECT status, COUNT(*) as count
+      FROM orders
+      WHERE bakery_id = ?
+      GROUP BY status
+    `).all(bakeryId);
+        // Top products by revenue
+        const topProducts = db.prepare(`
+      SELECT p.name, SUM(oi.quantity * oi.unit_price) as revenue, SUM(oi.quantity) as quantity_sold
+      FROM order_items oi
+      JOIN products p ON oi.product_id = p.id
+      JOIN orders o ON oi.order_id = o.id
+      WHERE o.bakery_id = ?
+      GROUP BY p.id
+      ORDER BY revenue DESC
+      LIMIT 10
+    `).all(bakeryId);
+        // Top customers by revenue
+        const topCustomers = db.prepare(`
+      SELECT c.name, c.total_orders, c.total_spent
+      FROM customers c
+      WHERE c.bakery_id = ?
+      ORDER BY c.total_spent DESC
+      LIMIT 10
+    `).all(bakeryId);
+        // Payment method breakdown
+        const paymentMethods = db.prepare(`
+      SELECT method, COUNT(*) as count, COALESCE(SUM(amount), 0) as total
+      FROM payments
+      WHERE bakery_id = ? AND status = 'completed'
+      GROUP BY method
+    `).all(bakeryId);
+        // Revenue by day of week
+        const revenueByDayOfWeek = db.prepare(`
+      SELECT
+        CAST(strftime('%w', created_at) AS INTEGER) as day_of_week,
+        COALESCE(SUM(total), 0) as revenue,
+        COUNT(*) as order_count
+      FROM orders
+      WHERE bakery_id = ? AND created_at >= date('now', '-3 months')
+      GROUP BY strftime('%w', created_at)
+      ORDER BY day_of_week
+    `).all(bakeryId);
+        res.json({
+            revenueByMonth,
+            ordersByStatus,
+            topProducts,
+            topCustomers,
+            paymentMethods,
+            revenueByDayOfWeek,
+        });
+    }
+    catch (err) {
+        console.error('Get reports error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+// GET /baker/profile
+router.get('/profile', (req, res) => {
+    try {
+        const user = db.prepare('SELECT id, email, name, phone, avatar_url, created_at FROM users WHERE id = ?').get(req.user.id);
+        const bakery = getBakeryForUser(req.user.id);
+        const subscription = db.prepare('SELECT * FROM subscriptions WHERE bakery_id = ?').get(bakery.id);
+        res.json({ user, bakery, subscription });
+    }
+    catch (err) {
+        console.error('Get profile error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+// PUT /baker/profile
+router.put('/profile', (req, res) => {
+    try {
+        const { name, phone, bakeryName, description, address, city } = req.body;
+        const now = new Date().toISOString();
+        if (name || phone) {
+            let q = 'UPDATE users SET ';
+            const p = [];
+            if (name) {
+                q += 'name = ?, ';
+                p.push(name);
+            }
+            if (phone !== undefined) {
+                q += 'phone = ?, ';
+                p.push(phone || null);
+            }
+            q = q.slice(0, -2) + ' WHERE id = ?';
+            p.push(req.user.id);
+            db.prepare(q).run(...p);
+        }
+        const bakery = getBakeryForUser(req.user.id);
+        if (bakery && (bakeryName || description !== undefined || address !== undefined || city !== undefined)) {
+            let q = 'UPDATE bakeries SET updated_at = ?, ';
+            const p = [now];
+            if (bakeryName) {
+                q += 'name = ?, ';
+                p.push(bakeryName);
+            }
+            if (description !== undefined) {
+                q += 'description = ?, ';
+                p.push(description || null);
+            }
+            if (address !== undefined) {
+                q += 'address = ?, ';
+                p.push(address || null);
+            }
+            if (city !== undefined) {
+                q += 'city = ?, ';
+                p.push(city || null);
+            }
+            q = q.slice(0, -2) + ' WHERE id = ?';
+            p.push(bakery.id);
+            db.prepare(q).run(...p);
+        }
+        const user = db.prepare('SELECT id, email, name, phone, avatar_url FROM users WHERE id = ?').get(req.user.id);
+        const updatedBakery = getBakeryForUser(req.user.id);
+        res.json({ user, bakery: updatedBakery });
+    }
+    catch (err) {
+        console.error('Update profile error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 // GET /baker/features
 router.get('/features', (req, res) => {
     try {

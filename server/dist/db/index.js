@@ -224,6 +224,28 @@ export function initDB() {
     );
     CREATE INDEX IF NOT EXISTS idx_onboarding_steps_bakery_id ON onboarding_steps(bakery_id);
   `);
+    // Payments table
+    db.exec(`
+    CREATE TABLE IF NOT EXISTS payments (
+      id TEXT PRIMARY KEY,
+      bakery_id TEXT NOT NULL,
+      order_id TEXT,
+      customer_id TEXT,
+      amount REAL NOT NULL,
+      method TEXT NOT NULL CHECK(method IN ('pix', 'cash', 'card', 'other')),
+      status TEXT NOT NULL DEFAULT 'completed' CHECK(status IN ('pending', 'completed', 'failed', 'refunded')),
+      reference TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (bakery_id) REFERENCES bakeries(id) ON DELETE CASCADE,
+      FOREIGN KEY (order_id) REFERENCES orders(id),
+      FOREIGN KEY (customer_id) REFERENCES customers(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_payments_bakery_id ON payments(bakery_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_order_id ON payments(order_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_method ON payments(method);
+    CREATE INDEX IF NOT EXISTS idx_payments_created_at ON payments(created_at);
+  `);
     // Audit log table
     db.exec(`
     CREATE TABLE IF NOT EXISTS audit_log (
