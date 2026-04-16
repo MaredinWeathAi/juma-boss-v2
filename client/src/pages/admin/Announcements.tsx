@@ -170,8 +170,8 @@ export default function Announcements() {
     });
   };
 
-  const getTargetLabel = (target: string) => {
-    if (target === 'all') return 'All Tiers';
+  const getTargetLabel = (target: string | null) => {
+    if (!target || target === 'all') return 'All Tiers';
     return target
       .split(',')
       .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
