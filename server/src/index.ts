@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 import bakerRoutes from './routes/baker.js';
 import mobileRoutes from './routes/mobile.js';
+import subscriptionRoutes from './routes/subscriptions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -23,6 +24,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/baker', bakerRoutes);
 app.use('/api/mobile', mobileRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 
 // Serve static client in production
 const clientDist = path.join(__dirname, '../../client/dist');

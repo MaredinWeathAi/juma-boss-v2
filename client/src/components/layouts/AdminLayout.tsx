@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   AlertCircle,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -43,6 +44,7 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
       items: [
         { label: 'Clients', path: '/admin/clients', icon: <Users size={20} /> },
         { label: 'Subscriptions', path: '/admin/subscriptions', icon: <CreditCard size={20} /> },
+        { label: 'Financeiro', path: '/admin/financial', icon: <TrendingUp size={20} /> },
         { label: 'Onboarding', path: '/admin/onboarding', icon: <Rocket size={20} /> },
       ],
     },

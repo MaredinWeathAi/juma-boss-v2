@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, AlertTriangle, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, AlertTriangle, Search, Users } from 'lucide-react';
 import api from '../../lib/api';
+import { formatBRL } from '../../lib/utils';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { StatusBadge } from '../../components/ui/StatusBadge';
+import { CardSkeleton } from '../../components/ui/LoadingSkeleton';
 
 interface Customer {
   id: string;
@@ -40,7 +44,7 @@ const Customers = () => {
       setLoading(true);
       setError(null);
       const response = await api.get('/baker/customers');
-      setCustomers(response.data || response || []);
+      setCustomers(response.customers || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load customers');
     } finally {
@@ -164,21 +168,21 @@ const Customers = () => {
 
       {/* Customers List */}
       {loading ? (
-        <div className="space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="card animate-pulse h-24"></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[...Array(6)].map((_, i) => (
+            <CardSkeleton key={i} />
           ))}
         </div>
       ) : filteredCustomers.length === 0 ? (
-        <div className="card text-center py-12">
-          <p className="text-surface-400 mb-4">Nenhum cliente encontrado</p>
-          <button
-            onClick={() => setShowModal(true)}
-            className="btn-primary"
-          >
-            Adicionar primeiro cliente
-          </button>
-        </div>
+        <EmptyState
+          icon={<Users size={28} />}
+          title="Nenhum cliente encontrado"
+          description="Comece adicionando seus primeiros clientes para gerenciar pedidos."
+          action={{
+            label: 'Adicionar primeiro cliente',
+            onClick: () => setShowModal(true),
+          }}
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredCustomers.map((customer) => (
@@ -198,7 +202,7 @@ const Customers = () => {
                 <div className="flex justify-between text-sm">
                   <span className="text-surface-500">Total Gasto</span>
                   <span className="text-emerald-400 font-semibold">
-                    R$ {customer.total_spent.toFixed(2)}
+                    {formatBRL(customer.total_spent)}
                   </span>
                 </div>
               </div>
@@ -220,13 +224,7 @@ const Customers = () => {
               </div>
 
               <div className="mt-3 pt-3 border-t border-surface-700">
-                <span className={`badge text-xs ${
-                  customer.status === 'active'
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : 'bg-yellow-500/20 text-yellow-400'
-                }`}>
-                  {customer.status === 'active' ? 'Ativo' : 'Inativo'}
-                </span>
+                <StatusBadge status={customer.status} />
               </div>
             </div>
           ))}

@@ -340,7 +340,7 @@ router.post('/clients', (req: AuthRequest, res: any) => {
       `).run(bakeryId, userId, resolvedBakeryName, slug, phone || null, tier, 'active', now, now);
 
       const subscriptionId = uuidv4();
-      const tierPrices: any = { free: 0, starter: 29, pro: 79, enterprise: 199 };
+      const tierPrices: any = { free: 0, starter: 149, pro: 399, enterprise: 999 };
       const monthlyPrice = tierPrices[tier] || 0;
 
       db.prepare(`
@@ -446,7 +446,7 @@ router.put('/clients/:id', (req: AuthRequest, res: any) => {
       }
 
       if (tier) {
-        const tierPrices: any = { free: 0, starter: 29, pro: 79, enterprise: 199 };
+        const tierPrices: any = { free: 0, starter: 149, pro: 399, enterprise: 999 };
         const monthlyPrice = tierPrices[tier] || 0;
         db.prepare(
           'UPDATE subscriptions SET tier = ?, monthly_price = ? WHERE bakery_id = ?'
@@ -673,7 +673,7 @@ router.get('/subscriptions', (req: AuthRequest, res: any) => {
       SELECT
         s.*,
         b.name as bakery_name, b.slug,
-        u.name, u.email
+        u.name as owner_name, u.email as owner_email
       FROM subscriptions s
       JOIN bakeries b ON s.bakery_id = b.id
       JOIN users u ON b.owner_id = u.id
@@ -698,8 +698,22 @@ router.get('/subscriptions', (req: AuthRequest, res: any) => {
 
     const totalCount = db.prepare(countQuery).get(...(status ? [status] : [])) as any;
 
+    // Get summary stats
+    const totalActive = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'").get() as any;
+    const totalTrialing = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'trialing'").get() as any;
+    const totalPastDue = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'past_due'").get() as any;
+    const totalCancelled = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'cancelled'").get() as any;
+    const totalMrr = db.prepare("SELECT COALESCE(SUM(monthly_price), 0) as total FROM subscriptions WHERE status = 'active'").get() as any;
+
     res.json({
       subscriptions,
+      summary: {
+        total_active: totalActive.count,
+        total_trialing: totalTrialing.count,
+        total_past_due: totalPastDue.count,
+        total_cancelled: totalCancelled.count,
+        total_mrr: totalMrr.total || 0,
+      },
       pagination: {
         page,
         limit,
@@ -954,9 +968,9 @@ router.get('/settings', (req: AuthRequest, res: any) => {
   try {
     const tierPrices = {
       free: 0,
-      starter: 29,
-      pro: 79,
-      enterprise: 199,
+      starter: 149,
+      pro: 399,
+      enterprise: 999,
     };
 
     const features = db.prepare('SELECT * FROM features ORDER BY tier_required, category').all() as any[];
@@ -1022,6 +1036,280 @@ router.put('/settings', (req: AuthRequest, res: any) => {
     res.json({ message: 'Settings updated' });
   } catch (err: any) {
     console.error('Update settings error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /admin/subscriptions/overview
+router.get('/subscriptions/overview', (req: AuthRequest, res: any) => {
+  try {
+    const active = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'").get() as any;
+    const trialing = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'trialing'").get() as any;
+    const past_due = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'past_due'").get() as any;
+    const cancelled = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'cancelled'").get() as any;
+
+    const mrr = db.prepare(
+      "SELECT SUM(monthly_price) as total FROM subscriptions WHERE status = 'active'"
+    ).get() as any;
+
+    const failedPayments = db.prepare(
+      "SELECT COUNT(*) as count FROM billing_history WHERE status = 'failed'"
+    ).get() as any;
+
+    // Upcoming renewals (next 7 days)
+    const sevenDaysFromNow = new Date();
+    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+    const upcomingRenewals = db.prepare(`
+      SELECT
+        s.id, s.tier, s.monthly_price,
+        b.name as bakery_name,
+        u.name as owner_name,
+        s.current_period_end
+      FROM subscriptions s
+      JOIN bakeries b ON s.bakery_id = b.id
+      JOIN users u ON b.owner_id = u.id
+      WHERE s.status = 'active'
+        AND s.current_period_end BETWEEN datetime('now') AND ?
+      ORDER BY s.current_period_end ASC
+      LIMIT 10
+    `).all(sevenDaysFromNow.toISOString()) as any[];
+
+    res.json({
+      active: active.count,
+      trialing: trialing.count,
+      past_due: past_due.count,
+      cancelled: cancelled.count,
+      failedPayments: failedPayments.count,
+      upcomingRenewals,
+    });
+  } catch (err: any) {
+    console.error('Subscriptions overview error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /admin/subscriptions/:id/discount
+router.post('/subscriptions/:id/discount', (req: AuthRequest, res: any) => {
+  try {
+    const subscriptionId = req.params.id as string;
+    const { amount, reason } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'Invalid discount amount' });
+    }
+
+    const subscription = db.prepare('SELECT * FROM subscriptions WHERE id = ?').get(subscriptionId) as any;
+    if (!subscription) {
+      return res.status(404).json({ error: 'Subscription not found' });
+    }
+
+    const now = new Date().toISOString();
+    const discountId = uuidv4();
+
+    db.prepare(`
+      INSERT INTO billing_history (id, subscription_id, amount, status, description, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(discountId, subscriptionId, -amount, 'discount', reason || 'Manual discount applied', now);
+
+    db.prepare(`
+      INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      uuidv4(),
+      req.user!.id,
+      'APPLY_DISCOUNT',
+      'subscription',
+      subscriptionId,
+      JSON.stringify({ amount, reason }),
+      now
+    );
+
+    res.json({ message: 'Discount applied successfully' });
+  } catch (err: any) {
+    console.error('Apply discount error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /admin/financial-reports
+router.get('/financial-reports', (req: AuthRequest, res: any) => {
+  try {
+    // MRR history (last 12 months)
+    const mrrHistory: any[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const monthStr = `${year}-${month}`;
+
+      // New MRR (subscriptions started this month)
+      const newMrr = db.prepare(`
+        SELECT COALESCE(SUM(s.monthly_price), 0) as total
+        FROM subscriptions s
+        WHERE strftime('%Y-%m', s.started_at) = ?
+          AND s.status IN ('active', 'trialing')
+      `).get(monthStr) as any;
+
+      // Expansion (tier upgrades)
+      const expansion = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as total
+        FROM billing_history
+        WHERE strftime('%Y-%m', created_at) = ?
+          AND description LIKE '%upgrade%'
+      `).get(monthStr) as any;
+
+      // Contraction (tier downgrades)
+      const contraction = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as total
+        FROM billing_history
+        WHERE strftime('%Y-%m', created_at) = ?
+          AND description LIKE '%downgrade%'
+      `).get(monthStr) as any;
+
+      // Churn (cancelled subscriptions)
+      const churn = db.prepare(`
+        SELECT COALESCE(SUM(s.monthly_price), 0) as total
+        FROM subscriptions s
+        WHERE strftime('%Y-%m', s.updated_at) = ?
+          AND s.status = 'cancelled'
+      `).get(monthStr) as any;
+
+      const total =
+        (newMrr.total || 0) + (expansion.total || 0) - Math.abs(contraction.total || 0) - (churn.total || 0);
+
+      mrrHistory.push({
+        month: monthStr,
+        new: newMrr.total || 0,
+        expansion: expansion.total || 0,
+        contraction: Math.abs(contraction.total || 0),
+        churn: churn.total || 0,
+        total: Math.max(0, total),
+      });
+    }
+
+    // Payment method breakdown
+    const paymentMethods = db.prepare(`
+      SELECT payment_method, COUNT(*) as count
+      FROM billing_history
+      WHERE payment_method IS NOT NULL
+      GROUP BY payment_method
+    `).all() as any[];
+
+    const totalPayments = paymentMethods.reduce((sum, pm) => sum + pm.count, 0);
+    const paymentMethodsWithPercentage = paymentMethods.map((pm) => ({
+      ...pm,
+      percentage: (pm.count / totalPayments) * 100,
+    }));
+
+    // Churn trend (last 12 months)
+    const churnTrend: any[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const monthStr = `${year}-${month}`;
+
+      const currentMonthSubs = db.prepare(`
+        SELECT COUNT(*) as count FROM subscriptions
+        WHERE strftime('%Y-%m', current_period_end) <= ?
+      `).get(monthStr) as any;
+
+      const churnedSubs = db.prepare(`
+        SELECT COUNT(*) as count FROM subscriptions
+        WHERE status = 'cancelled' AND strftime('%Y-%m', updated_at) = ?
+      `).get(monthStr) as any;
+
+      const churnRate =
+        currentMonthSubs.count > 0 ? (churnedSubs.count / currentMonthSubs.count) * 100 : 0;
+
+      churnTrend.push({
+        month: monthStr,
+        rate: churnRate,
+      });
+    }
+
+    // LTV by tier
+    const tierData = db.prepare(`
+      SELECT
+        b.tier,
+        COUNT(DISTINCT b.id) as baker_count,
+        AVG(DATEDIFF('month', s.started_at, COALESCE(s.current_period_end, date('now')))) as avg_duration,
+        AVG(s.monthly_price) as avg_price
+      FROM bakeries b
+      JOIN subscriptions s ON b.id = s.bakery_id
+      WHERE s.status IN ('active', 'trialing', 'cancelled')
+      GROUP BY b.tier
+    `).all() as any[];
+
+    const ltvByTier = tierData.map((tier) => ({
+      tier: tier.tier,
+      avgDuration: tier.avg_duration || 0,
+      avgMonthlyPrice: tier.avg_price || 0,
+      ltv: (tier.avg_duration || 0) * (tier.avg_price || 0),
+    }));
+
+    // Failed payments tracker
+    const failedPayments = db.prepare(`
+      SELECT
+        bh.id,
+        b.name as bakery_name,
+        u.name as owner_name,
+        bh.amount,
+        bh.created_at as attempt_date,
+        CASE
+          WHEN bh.status = 'failed' THEN 'pending'
+          ELSE bh.status
+        END as retry_status
+      FROM billing_history bh
+      JOIN subscriptions s ON bh.subscription_id = s.id
+      JOIN bakeries b ON s.bakery_id = b.id
+      JOIN users u ON b.owner_id = u.id
+      WHERE bh.status = 'failed'
+      ORDER BY bh.created_at DESC
+      LIMIT 20
+    `).all() as any[];
+
+    res.json({
+      mrrHistory,
+      paymentMethods: paymentMethodsWithPercentage,
+      churnTrend,
+      ltvByTier,
+      failedPayments,
+    });
+  } catch (err: any) {
+    console.error('Financial reports error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /admin/financial-reports/export
+router.post('/financial-reports/export', (req: AuthRequest, res: any) => {
+  try {
+    const { type } = req.body;
+
+    if (!type || !['revenue', 'churn'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid report type' });
+    }
+
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      uuidv4(),
+      req.user!.id,
+      'EXPORT_REPORT',
+      'financial_report',
+      type,
+      JSON.stringify({ type }),
+      now
+    );
+
+    res.json({ message: `${type} report exported successfully` });
+  } catch (err: any) {
+    console.error('Export report error:', err);
     res.status(500).json({ error: err.message });
   }
 });

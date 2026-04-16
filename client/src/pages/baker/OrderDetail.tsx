@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, AlertTriangle, CheckCircle, DollarSign } from 'lucide-react';
 import api from '../../lib/api';
+import { formatBRL } from '../../lib/utils';
 
 interface OrderItem {
   id: string;
@@ -56,7 +57,7 @@ const OrderDetail = () => {
       setLoading(true);
       setError(null);
       const response = await api.get(`/baker/orders/${id}`);
-      setOrder(response.data || response);
+      setOrder(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load order');
     } finally {
@@ -155,7 +156,7 @@ const OrderDetail = () => {
           <div>
             <h3 className="font-semibold text-red-400">Pedido não encontrado</h3>
             <button
-              onClick={() => navigate('/baker/orders')}
+              onClick={() => navigate('/app/orders')}
               className="btn-secondary text-sm mt-4"
             >
               Voltar para pedidos
@@ -253,10 +254,10 @@ const OrderDetail = () => {
                       <td className="py-3 text-sm text-white">Produto</td>
                       <td className="py-3 text-center text-sm text-surface-300">{item.quantity}</td>
                       <td className="py-3 text-right text-sm text-surface-300">
-                        R$ {(item.unitPrice as any).toFixed(2)}
+                        {formatBRL(item.unitPrice)}
                       </td>
                       <td className="py-3 text-right text-sm font-medium text-white">
-                        R$ {(item.total as any).toFixed(2)}
+                        {formatBRL(item.total)}
                       </td>
                     </tr>
                   ))}
@@ -268,23 +269,23 @@ const OrderDetail = () => {
             <div className="mt-6 space-y-3 pt-6 border-t border-surface-700">
               <div className="flex justify-between text-sm">
                 <span className="text-surface-400">Subtotal</span>
-                <span className="text-white">R$ {order.subtotal.toFixed(2)}</span>
+                <span className="text-white">{formatBRL(order.subtotal)}</span>
               </div>
               {order.tax > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-surface-400">Impostos</span>
-                  <span className="text-white">R$ {order.tax.toFixed(2)}</span>
+                  <span className="text-white">{formatBRL(order.tax)}</span>
                 </div>
               )}
               {order.discount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-surface-400">Desconto</span>
-                  <span className="text-emerald-400">-R$ {order.discount.toFixed(2)}</span>
+                  <span className="text-emerald-400">-{formatBRL(order.discount)}</span>
                 </div>
               )}
               <div className="flex justify-between text-lg font-bold border-t border-surface-700 pt-3">
                 <span className="text-white">Total</span>
-                <span className="text-brand-400">R$ {order.total.toFixed(2)}</span>
+                <span className="text-brand-400">{formatBRL(order.total)}</span>
               </div>
             </div>
           </div>
@@ -360,7 +361,7 @@ const OrderDetail = () => {
             <div className="bg-surface-800 p-3 rounded-lg mb-4">
               <p className="text-xs text-surface-500 mb-1">Valor a receber</p>
               <p className="text-2xl font-bold text-white">
-                R$ {Math.max(0, order.total - (order.payment_status === 'paid' ? order.total : 0)).toFixed(2)}
+                {formatBRL(Math.max(0, order.total - (order.payment_status === 'paid' ? order.total : 0)))}
               </p>
             </div>
 

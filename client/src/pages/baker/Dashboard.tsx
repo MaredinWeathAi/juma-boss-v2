@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Plus, TrendingUp, TrendingDown, AlertTriangle, Package, ShoppingCart, Users, ChefHat } from 'lucide-react';
 import api from '../../lib/api';
+import { useAuth } from '../../contexts/AuthContext';
+import { formatBRL } from '../../lib/utils';
+import { StatCardSkeleton } from '../../components/ui/LoadingSkeleton';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/20 text-yellow-400',
@@ -24,9 +27,17 @@ const statusLabels: Record<string, string> = {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Bom dia';
+    if (hour < 18) return 'Boa tarde';
+    return 'Boa noite';
+  };
 
   useEffect(() => {
     fetchDashboard();
@@ -48,12 +59,10 @@ const Dashboard = () => {
   if (loading) {
     return (
       <div className="space-y-8">
+        <div className="h-8 bg-surface-800 rounded w-1/3 animate-pulse"></div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="stat-card animate-pulse">
-              <div className="h-4 bg-surface-800 rounded w-3/4"></div>
-              <div className="h-8 bg-surface-800 rounded w-1/2 mt-2"></div>
-            </div>
+            <StatCardSkeleton key={i} />
           ))}
         </div>
       </div>
@@ -90,8 +99,10 @@ const Dashboard = () => {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="page-title mb-2">Dashboard</h1>
-          <p className="page-subtitle">Bem-vindo de volta! Aqui está o resumo do seu negócio.</p>
+          <h1 className="page-title mb-2">
+            {getGreeting()}, {user?.name?.split(' ')[0]}!
+          </h1>
+          <p className="page-subtitle">Aqui está o resumo do seu negócio para hoje.</p>
         </div>
         <div className="flex gap-3">
           <button onClick={() => navigate('/app/orders/new')} className="btn-primary flex items-center gap-2">
@@ -102,10 +113,10 @@ const Dashboard = () => {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="stat-card">
+        <div className="stat-card card-hover">
           <p className="text-surface-400 text-sm font-medium">Receita este mês</p>
           <div className="mt-2">
-            <p className="text-2xl font-bold text-white">R$ {(stats.monthRevenue || 0).toFixed(2)}</p>
+            <p className="text-2xl font-bold text-white">{formatBRL(stats.monthRevenue || 0)}</p>
             <div className="flex items-center gap-1 mt-2">
               {revenueChange >= 0 ? (
                 <TrendingUp size={16} className="text-emerald-500" />
@@ -119,23 +130,23 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="stat-card">
+        <div className="stat-card card-hover">
           <p className="text-surface-400 text-sm font-medium">Pedidos Pendentes</p>
           <p className="text-2xl font-bold text-white mt-2">{stats.pendingOrders || 0}</p>
           <p className="text-xs text-surface-500 mt-2">Aguardando confirmação</p>
         </div>
 
-        <div className="stat-card">
+        <div className="stat-card card-hover">
           <p className="text-surface-400 text-sm font-medium">Clientes</p>
           <p className="text-2xl font-bold text-white mt-2">{stats.totalCustomers || 0}</p>
         </div>
 
-        <div className="stat-card">
+        <div className="stat-card card-hover">
           <p className="text-surface-400 text-sm font-medium">Produtos</p>
           <p className="text-2xl font-bold text-white mt-2">{stats.totalProducts || 0}</p>
         </div>
 
-        <div className={`stat-card ${(stats.lowStockCount || 0) > 0 ? 'border-yellow-500/50' : ''}`}>
+        <div className={`stat-card card-hover ${(stats.lowStockCount || 0) > 0 ? 'border-yellow-500/50' : ''}`}>
           <p className="text-surface-400 text-sm font-medium">Estoque Baixo</p>
           <p className={`text-2xl font-bold mt-2 ${(stats.lowStockCount || 0) > 0 ? 'text-yellow-400' : 'text-emerald-400'}`}>
             {stats.lowStockCount || 0}
@@ -207,7 +218,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <p className="text-sm font-semibold text-white">R$ {(order.total || 0).toFixed(2)}</p>
+                  <p className="text-sm font-semibold text-white">{formatBRL(order.total || 0)}</p>
                   <span className={`badge text-xs ${statusColors[order.status] || 'bg-surface-700 text-surface-300'}`}>
                     {statusLabels[order.status] || order.status}
                   </span>
@@ -239,7 +250,7 @@ const Dashboard = () => {
                   <p className="text-xs text-surface-400">{order.customer_name}</p>
                 </div>
                 <div className="flex items-center gap-4">
-                  <p className="text-sm font-semibold text-white">R$ {(order.total || 0).toFixed(2)}</p>
+                  <p className="text-sm font-semibold text-white">{formatBRL(order.total || 0)}</p>
                   <span className={`badge text-xs ${statusColors[order.status] || 'bg-surface-700 text-surface-300'}`}>
                     {statusLabels[order.status] || order.status}
                   </span>
@@ -249,6 +260,67 @@ const Dashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Daily Production Summary */}
+      {todaysOrders && todaysOrders.length > 0 && (
+        <div className="card">
+          <h3 className="text-lg font-semibold text-white mb-6">O que Produzir Hoje</h3>
+          <div className="space-y-3">
+            {(() => {
+              const itemSummary: Record<string, number> = {};
+              todaysOrders.forEach((order: any) => {
+                // Items would need to be loaded from order details
+                // This is a simplified version
+              });
+
+              return (
+                <div className="text-center py-4 text-surface-400 text-sm">
+                  <p>Visualize os itens na página de Produção</p>
+                  <button
+                    onClick={() => navigate('/app/production')}
+                    className="text-brand-400 hover:text-brand-300 mt-2 underline"
+                  >
+                    Ir para Fila de Produção →
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Upcoming Deliveries */}
+      <div className="card">
+        <h3 className="text-lg font-semibold text-white mb-4">Próximas Entregas</h3>
+        <div className="grid grid-cols-7 gap-2">
+          {(() => {
+            const days = [];
+            for (let i = 0; i < 7; i++) {
+              const date = new Date(Date.now() + i * 86400000);
+              const dayName = date.toLocaleDateString('pt-BR', { weekday: 'short' }).substring(0, 3);
+              const dayNum = date.getDate();
+              const isToday = i === 0;
+
+              days.push(
+                <div
+                  key={i}
+                  className={`p-3 rounded-lg text-center ${
+                    isToday
+                      ? 'bg-brand-500/20 border border-brand-500/50'
+                      : 'bg-surface-800 border border-surface-700'
+                  }`}
+                >
+                  <p className="text-xs text-surface-400 uppercase">{dayName}</p>
+                  <p className={`text-lg font-bold ${isToday ? 'text-brand-400' : 'text-white'}`}>
+                    {dayNum}
+                  </p>
+                </div>
+              );
+            }
+            return days;
+          })()}
+        </div>
+      </div>
     </div>
   );
 };

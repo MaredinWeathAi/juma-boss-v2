@@ -13,9 +13,11 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ComposedChart,
 } from 'recharts';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
 import api from '../../lib/api';
+import { formatBRL } from '../../lib/utils';
 
 interface ReportsData {
   revenue_by_month: any[];
@@ -26,9 +28,22 @@ interface ReportsData {
   revenue_by_day_of_week: any[];
 }
 
+interface MarginData {
+  name: string;
+  margin: number;
+}
+
+interface VelocityData {
+  name: string;
+  trend: 'up' | 'down' | 'flat';
+  weekly: number[];
+}
+
 const Reports = () => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ReportsData | null>(null);
+  const [marginData, setMarginData] = useState<MarginData[]>([]);
+  const [velocityData, setVelocityData] = useState<VelocityData[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -39,8 +54,14 @@ const Reports = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get('/baker/reports');
-      setData(response.data || response);
+      const [reportsResponse, marginsResponse, velocityResponse] = await Promise.all([
+        api.get('/baker/reports'),
+        api.get('/baker/reports/margins'),
+        api.get('/baker/reports/velocity'),
+      ]);
+      setData(reportsResponse);
+      setMarginData(marginsResponse);
+      setVelocityData(velocityResponse);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load reports');
     } finally {
@@ -170,7 +191,7 @@ const Reports = () => {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ method, total }) => `${method}: R$ ${(total as any).toFixed(2)}`}
+                  label={({ method, total }) => `${method}: ${formatBRL(total as any)}`}
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="total"
@@ -274,12 +295,81 @@ const Reports = () => {
                       {customer.total_orders || 0}
                     </td>
                     <td className="py-3 text-right text-sm font-medium text-emerald-400">
-                      R$ {(customer.total_spent || 0).toFixed(2)}
+                      {formatBRL(customer.total_spent || 0)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Profit Margin Analysis */}
+      {marginData.length > 0 && (
+        <div className="card">
+          <h3 className="text-lg font-semibold text-white mb-6">Análise de Margem de Lucro</h3>
+          <ResponsiveContainer width="100%" height={350}>
+            <BarChart data={marginData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#404040" />
+              <XAxis dataKey="name" tick={{ fill: '#9CA3AF', fontSize: 12 }} angle={-45} textAnchor="end" height={100} />
+              <YAxis tick={{ fill: '#9CA3AF', fontSize: 12 }} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1e293b',
+                  border: '1px solid #404040',
+                  borderRadius: '8px',
+                }}
+                labelStyle={{ color: '#e5e7eb' }}
+                formatter={(value) => `${(value as number).toFixed(1)}%`}
+              />
+              <Bar dataKey="margin" radius={[8, 8, 0, 0]}>
+                {marginData.map((entry, index) => {
+                  let color = '#ef4444';
+                  if (entry.margin >= 50) color = '#10b981';
+                  else if (entry.margin >= 30) color = '#eab308';
+                  return <Cell key={`cell-${index}`} fill={color} />;
+                })}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Sales Velocity */}
+      {velocityData.length > 0 && (
+        <div className="card">
+          <h3 className="text-lg font-semibold text-white mb-6">Velocidade de Vendas (Últimas 4 Semanas)</h3>
+          <div className="space-y-4">
+            {velocityData.slice(0, 10).map((product) => (
+              <div key={product.name} className="flex items-center gap-4">
+                <div className="w-32 text-sm font-medium text-white truncate">{product.name}</div>
+                <div className="flex-1 flex items-center gap-2">
+                  <div className="flex gap-1 flex-1">
+                    {product.weekly.map((week, idx) => (
+                      <div
+                        key={idx}
+                        className="flex-1 bg-surface-800 rounded h-8 flex items-center justify-center text-xs text-surface-400"
+                        title={`Semana: ${week} unidades`}
+                      >
+                        {week > 0 && week}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="w-20 text-right">
+                    {product.trend === 'up' && (
+                      <TrendingUp className="text-emerald-400 inline" size={16} />
+                    )}
+                    {product.trend === 'down' && (
+                      <TrendingDown className="text-red-400 inline" size={16} />
+                    )}
+                    {product.trend === 'flat' && (
+                      <div className="text-surface-400 text-xs inline">—</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Plus, AlertTriangle, Filter } from 'lucide-react';
 import api from '../../lib/api';
+import { formatBRL } from '../../lib/utils';
 
 interface Payment {
   id: string;
@@ -47,7 +48,7 @@ const Payments = () => {
       setLoading(true);
       setError(null);
       const response = await api.get('/baker/payments');
-      setData(response.data || response);
+      setData(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load payments');
     } finally {
@@ -160,35 +161,35 @@ const Payments = () => {
           <div className="stat-card">
             <p className="text-surface-400 text-sm font-medium">Total Recebido</p>
             <p className="text-2xl font-bold text-white mt-2">
-              R$ {data.total_received.toFixed(2)}
+              {formatBRL(data.total_received)}
             </p>
           </div>
 
           <div className="stat-card">
             <p className="text-surface-400 text-sm font-medium">PIX</p>
             <p className="text-2xl font-bold text-emerald-400 mt-2">
-              R$ {data.pix_total.toFixed(2)}
+              {formatBRL(data.pix_total)}
             </p>
           </div>
 
           <div className="stat-card">
             <p className="text-surface-400 text-sm font-medium">Dinheiro</p>
             <p className="text-2xl font-bold text-blue-400 mt-2">
-              R$ {data.cash_total.toFixed(2)}
+              {formatBRL(data.cash_total)}
             </p>
           </div>
 
           <div className="stat-card">
             <p className="text-surface-400 text-sm font-medium">Cartão</p>
             <p className="text-2xl font-bold text-purple-400 mt-2">
-              R$ {data.card_total.toFixed(2)}
+              {formatBRL(data.card_total)}
             </p>
           </div>
 
           <div className="stat-card">
             <p className="text-surface-400 text-sm font-medium">Este Mês</p>
             <p className="text-2xl font-bold text-brand-400 mt-2">
-              R$ {data.month_total.toFixed(2)}
+              {formatBRL(data.month_total)}
             </p>
           </div>
         </div>
@@ -277,7 +278,7 @@ const Payments = () => {
 
               <div className="text-right">
                 <p className="text-lg font-bold text-emerald-400">
-                  R$ {payment.amount.toFixed(2)}
+                  {formatBRL(payment.amount)}
                 </p>
                 <span className={`badge text-xs font-medium ${getMethodColor(payment.method)}`}>
                   {getMethodLabel(payment.method)}

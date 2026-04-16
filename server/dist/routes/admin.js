@@ -289,7 +289,7 @@ router.post('/clients', (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(bakeryId, userId, resolvedBakeryName, slug, phone || null, tier, 'active', now, now);
             const subscriptionId = uuidv4();
-            const tierPrices = { free: 0, starter: 29, pro: 79, enterprise: 199 };
+            const tierPrices = { free: 0, starter: 149, pro: 399, enterprise: 999 };
             const monthlyPrice = tierPrices[tier] || 0;
             db.prepare(`
         INSERT INTO subscriptions (id, bakery_id, tier, status, monthly_price, started_at, created_at)
@@ -379,7 +379,7 @@ router.put('/clients/:id', (req, res) => {
                 db.prepare('UPDATE bakeries SET status = ?, updated_at = ? WHERE id = ?').run(status, now, bakery.id);
             }
             if (tier) {
-                const tierPrices = { free: 0, starter: 29, pro: 79, enterprise: 199 };
+                const tierPrices = { free: 0, starter: 149, pro: 399, enterprise: 999 };
                 const monthlyPrice = tierPrices[tier] || 0;
                 db.prepare('UPDATE subscriptions SET tier = ?, monthly_price = ? WHERE bakery_id = ?').run(tier, monthlyPrice, bakery.id);
                 db.prepare('UPDATE bakeries SET tier = ? WHERE id = ?').run(tier, bakery.id);
@@ -791,9 +791,9 @@ router.get('/settings', (req, res) => {
     try {
         const tierPrices = {
             free: 0,
-            starter: 29,
-            pro: 79,
-            enterprise: 199,
+            starter: 149,
+            pro: 399,
+            enterprise: 999,
         };
         const features = db.prepare('SELECT * FROM features ORDER BY tier_required, category').all();
         res.json({

@@ -17,8 +17,65 @@ export function getDB(): Database.Database {
   return db;
 }
 
+function columnExists(tableName: string, columnName: string): boolean {
+  try {
+    db.prepare(`SELECT ${columnName} FROM ${tableName} LIMIT 0`).all();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function initDB(): void {
   db = getDB();
+
+  // Check if subscriptions table exists and add missing columns
+  try {
+    const result = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='subscriptions'").get();
+    if (result) {
+      // Table exists, check for and add missing columns
+      if (!columnExists('subscriptions', 'billing_cycle')) {
+        db.exec(`
+          ALTER TABLE subscriptions ADD COLUMN billing_cycle TEXT CHECK(billing_cycle IN ('monthly', 'annual')) DEFAULT 'monthly';
+        `);
+      }
+      if (!columnExists('subscriptions', 'annual_discount_applied')) {
+        db.exec(`ALTER TABLE subscriptions ADD COLUMN annual_discount_applied INT DEFAULT 0;`);
+      }
+      if (!columnExists('subscriptions', 'next_billing_date')) {
+        db.exec(`ALTER TABLE subscriptions ADD COLUMN next_billing_date TEXT;`);
+      }
+      if (!columnExists('subscriptions', 'trial_ends_at')) {
+        db.exec(`ALTER TABLE subscriptions ADD COLUMN trial_ends_at TEXT;`);
+      }
+      if (!columnExists('subscriptions', 'payment_method_id')) {
+        db.exec(`ALTER TABLE subscriptions ADD COLUMN payment_method_id TEXT;`);
+      }
+      if (!columnExists('subscriptions', 'failed_payment_count')) {
+        db.exec(`ALTER TABLE subscriptions ADD COLUMN failed_payment_count INT DEFAULT 0;`);
+      }
+      if (!columnExists('subscriptions', 'grace_period_end')) {
+        db.exec(`ALTER TABLE subscriptions ADD COLUMN grace_period_end TEXT;`);
+      }
+      if (!columnExists('subscriptions', 'updated_at')) {
+        db.exec(`ALTER TABLE subscriptions ADD COLUMN updated_at TEXT;`);
+      }
+    }
+  } catch {
+    // Table doesn't exist, will be created below
+  }
+
+  // Check if billing_history table exists and add missing columns
+  try {
+    const result = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='billing_history'").get();
+    if (result) {
+      if (!columnExists('billing_history', 'description')) {
+        db.exec(`ALTER TABLE billing_history ADD COLUMN description TEXT;`);
+      }
+    }
+  } catch {
+    // Table doesn't exist, will be created below
+  }
 
   // Users table
   db.exec(`
@@ -74,10 +131,80 @@ export function initDB(): void {
       current_period_end TEXT,
       cancelled_at TEXT,
       created_at TEXT NOT NULL,
-      FOREIGN KEY (bakery_id) REFERENCES bakeries(id)
+      updated_at TEXT,
+      billing_cycle TEXT CHECK(billing_cycle IN ('monthly', 'annual')) DEFAULT 'monthly',
+      annual_discount_applied INT DEFAULT 0,
+      next_billing_date TEXT,
+      trial_ends_at TEXT,
+      payment_method_id TEXT,
+      failed_payment_count INT DEFAULT 0,
+      grace_period_end TEXT,
+      FOREIGN KEY (bakery_id) REFERENCES bakeries(id),
+      FOREIGN KEY (payment_method_id) REFERENCES baker_payment_methods(id)
     );
     CREATE INDEX IF NOT EXISTS idx_subscriptions_bakery_id ON subscriptions(bakery_id);
     CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
+    CREATE INDEX IF NOT EXISTS idx_subscriptions_next_billing_date ON subscriptions(next_billing_date);
+  `);
+
+  // Subscription plans table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS subscription_plans (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT UNIQUE NOT NULL,
+      monthly_price REAL NOT NULL,
+      annual_price REAL NOT NULL,
+      features TEXT,
+      max_products INT,
+      max_customers INT,
+      max_orders_per_month INT,
+      is_active INT DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_subscription_plans_slug ON subscription_plans(slug);
+    CREATE INDEX IF NOT EXISTS idx_subscription_plans_is_active ON subscription_plans(is_active);
+  `);
+
+  // Billing history table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS billing_history (
+      id TEXT PRIMARY KEY,
+      subscription_id TEXT NOT NULL,
+      bakery_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      currency TEXT DEFAULT 'BRL',
+      billing_period_start TEXT,
+      billing_period_end TEXT,
+      payment_method TEXT CHECK(payment_method IN ('pix', 'credit_card', 'debit_card', 'boleto')),
+      payment_reference TEXT,
+      status TEXT CHECK(status IN ('pending', 'paid', 'failed', 'refunded', 'discount')) DEFAULT 'pending',
+      invoice_number TEXT,
+      description TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (subscription_id) REFERENCES subscriptions(id),
+      FOREIGN KEY (bakery_id) REFERENCES bakeries(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_billing_history_subscription_id ON billing_history(subscription_id);
+    CREATE INDEX IF NOT EXISTS idx_billing_history_bakery_id ON billing_history(bakery_id);
+    CREATE INDEX IF NOT EXISTS idx_billing_history_status ON billing_history(status);
+    CREATE INDEX IF NOT EXISTS idx_billing_history_created_at ON billing_history(created_at);
+  `);
+
+  // Baker payment methods table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS baker_payment_methods (
+      id TEXT PRIMARY KEY,
+      bakery_id TEXT NOT NULL,
+      type TEXT CHECK(type IN ('pix', 'credit_card', 'debit_card', 'boleto')),
+      label TEXT,
+      is_default INT DEFAULT 0,
+      details TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (bakery_id) REFERENCES bakeries(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_baker_payment_methods_bakery_id ON baker_payment_methods(bakery_id);
+    CREATE INDEX IF NOT EXISTS idx_baker_payment_methods_is_default ON baker_payment_methods(is_default);
   `);
 
   // Features table
@@ -296,6 +423,22 @@ export function initDB(): void {
       FOREIGN KEY (author_id) REFERENCES users(id)
     );
     CREATE INDEX IF NOT EXISTS idx_announcements_is_active ON announcements(is_active);
+  `);
+
+  // Recipe items table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS recipe_items (
+      id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      ingredient_id TEXT NOT NULL,
+      quantity_per_batch REAL NOT NULL,
+      batch_size INT NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+      FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_recipe_items_product_id ON recipe_items(product_id);
+    CREATE INDEX IF NOT EXISTS idx_recipe_items_ingredient_id ON recipe_items(ingredient_id);
   `);
 }
 

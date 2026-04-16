@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
+import { formatBRL } from '../../lib/utils';
 
 interface ClientData {
   id: string;
@@ -146,7 +147,23 @@ const ClientCard = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3 pt-4 border-t border-surface-800">
+      <div className="grid grid-cols-5 gap-3 pt-4 border-t border-surface-800">
+        <div>
+          <p className="text-xs text-surface-500">Status</p>
+          <p className="text-xs font-semibold mt-1">
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                client.subscription_status === 'active'
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : client.subscription_status === 'cancelled'
+                  ? 'bg-red-500/20 text-red-400'
+                  : 'bg-yellow-500/20 text-yellow-400'
+              }`}
+            >
+              {client.subscription_status}
+            </span>
+          </p>
+        </div>
         <div>
           <p className="text-xs text-surface-500">Orders</p>
           <p className="text-sm font-semibold text-white flex items-center gap-1">
@@ -158,7 +175,7 @@ const ClientCard = ({
           <p className="text-xs text-surface-500">Revenue</p>
           <p className="text-sm font-semibold text-white flex items-center gap-1">
             <DollarSign size={14} className="text-surface-400" />
-            ${(client.total_revenue / 100).toFixed(0)}
+            {formatBRL(client.total_revenue / 100)}
           </p>
         </div>
         <div>
@@ -769,20 +786,23 @@ export default function ClientList() {
           </div>
 
           {/* Tier Filter Tabs */}
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            {tierTabs.map((tab) => (
-              <button
-                key={tab.value}
-                onClick={() => handleTierChange(tab.value)}
-                className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                  tier === tab.value
-                    ? 'bg-brand-500 text-surface-950'
-                    : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-surface-300">Filter by Tier</p>
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              {tierTabs.map((tab) => (
+                <button
+                  key={tab.value}
+                  onClick={() => handleTierChange(tab.value)}
+                  className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors text-sm ${
+                    tier === tab.value
+                      ? 'bg-brand-500 text-surface-950'
+                      : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Client Cards Grid */}

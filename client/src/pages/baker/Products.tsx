@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, AlertTriangle, Grid, List } from 'lucide-react';
+import { Plus, Edit2, Trash2, AlertTriangle, Grid, List, Package } from 'lucide-react';
 import api from '../../lib/api';
+import { formatBRL } from '../../lib/utils';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { CardSkeleton } from '../../components/ui/LoadingSkeleton';
 
 interface Product {
   id: string;
@@ -42,7 +45,7 @@ const Products = () => {
       setLoading(true);
       setError(null);
       const response = await api.get('/baker/products');
-      const data = response.data || response || [];
+      const data = response.products || [];
       setProducts(data);
 
       // Extract unique categories
@@ -225,19 +228,19 @@ const Products = () => {
       {loading ? (
         <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : ''}`}>
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="card animate-pulse h-64"></div>
+            <CardSkeleton key={i} />
           ))}
         </div>
       ) : filteredProducts.length === 0 ? (
-        <div className="card text-center py-12">
-          <p className="text-surface-400 mb-4">Nenhum produto encontrado</p>
-          <button
-            onClick={() => setShowModal(true)}
-            className="btn-primary"
-          >
-            Criar primeiro produto
-          </button>
-        </div>
+        <EmptyState
+          icon={<Package size={28} />}
+          title="Nenhum produto encontrado"
+          description="Comece criando seu primeiro produto para começar a receber pedidos."
+          action={{
+            label: 'Criar primeiro produto',
+            onClick: () => setShowModal(true),
+          }}
+        />
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProducts.map((product) => (
@@ -252,11 +255,11 @@ const Products = () => {
               <div className="space-y-2 mb-4 py-3 border-t border-surface-700">
                 <div className="flex justify-between text-sm">
                   <span className="text-surface-500">Preço</span>
-                  <span className="text-white font-semibold">R$ {product.price.toFixed(2)}</span>
+                  <span className="text-white font-semibold">{formatBRL(product.price)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-surface-500">Custo</span>
-                  <span className="text-white">R$ {product.cost.toFixed(2)}</span>
+                  <span className="text-white">{formatBRL(product.cost)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-surface-500">Margem</span>
@@ -308,7 +311,7 @@ const Products = () => {
                 <h3 className="font-semibold text-white">{product.name}</h3>
                 <div className="flex gap-4 mt-2 text-sm text-surface-400">
                   <span>{product.category}</span>
-                  <span>R$ {product.price.toFixed(2)}</span>
+                  <span>{formatBRL(product.price)}</span>
                   <span>Margem: {margin(product)}%</span>
                 </div>
               </div>

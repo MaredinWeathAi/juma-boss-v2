@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Plus, X, AlertTriangle } from 'lucide-react';
 import api from '../../lib/api';
+import { formatBRL } from '../../lib/utils';
 
 interface Customer {
   id: string;
@@ -69,7 +70,7 @@ const OrderCreate = () => {
   const fetchCustomers = async () => {
     try {
       const response = await api.get('/baker/customers');
-      setCustomers(response.data || response || []);
+      setCustomers(response.customers || []);
     } catch (err) {
       setError('Failed to load customers');
     }
@@ -78,7 +79,7 @@ const OrderCreate = () => {
   const fetchProducts = async () => {
     try {
       const response = await api.get('/baker/products');
-      setProducts(response.data || response || []);
+      setProducts(response.products || []);
     } catch (err) {
       setError('Failed to load products');
     }
@@ -93,7 +94,7 @@ const OrderCreate = () => {
     try {
       setLoading(true);
       const response = await api.post('/baker/customers', newCustomer);
-      const created = response.data || response;
+      const created = response;
       setSelectedCustomer(created);
       setShowNewCustomerForm(false);
       setNewCustomer({ name: '', email: '', phone: '', address: '', city: '' });
@@ -157,7 +158,7 @@ const OrderCreate = () => {
       };
 
       const response = await api.post('/baker/orders', orderData);
-      const createdOrder = response.data || response;
+      const createdOrder = response;
       navigate(`/app/orders/${createdOrder.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create order');
@@ -382,7 +383,7 @@ const OrderCreate = () => {
                   <option value="">Selecionar produto...</option>
                   {filteredProducts.map((product) => (
                     <option key={product.id} value={product.id}>
-                      {product.name} - R$ {product.basePrice.toFixed(2)}
+                      {product.name} - {formatBRL(product.basePrice)}
                     </option>
                   ))}
                 </select>
@@ -423,7 +424,7 @@ const OrderCreate = () => {
                       <div className="flex-1">
                         <p className="text-sm font-medium text-white">{product?.name}</p>
                         <p className="text-xs text-surface-400">
-                          {item.quantity}x R$ {item.unitPrice.toFixed(2)} = R$ {item.total.toFixed(2)}
+                          {item.quantity}x {formatBRL(item.unitPrice)} = {formatBRL(item.total)}
                         </p>
                       </div>
                       <button
@@ -445,7 +446,7 @@ const OrderCreate = () => {
               <div className="flex justify-between items-center">
                 <span className="text-surface-400">Total</span>
                 <span className="text-2xl font-bold text-white">
-                  R$ {totalPrice.toFixed(2)}
+                  {formatBRL(totalPrice)}
                 </span>
               </div>
             </div>
@@ -568,7 +569,7 @@ const OrderCreate = () => {
                         {product?.name} x{item.quantity}
                       </span>
                       <span className="text-white font-medium">
-                        R$ {item.total.toFixed(2)}
+                        {formatBRL(item.total)}
                       </span>
                     </div>
                   );
@@ -576,7 +577,7 @@ const OrderCreate = () => {
               </div>
               <div className="border-t border-surface-700 mt-3 pt-3 flex justify-between">
                 <span className="font-semibold text-white">Total</span>
-                <span className="font-bold text-brand-400">R$ {totalPrice.toFixed(2)}</span>
+                <span className="font-bold text-brand-400">{formatBRL(totalPrice)}</span>
               </div>
             </div>
 

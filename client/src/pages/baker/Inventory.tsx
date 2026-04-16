@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, AlertTriangle, Zap } from 'lucide-react';
 import api from '../../lib/api';
+import { formatBRL } from '../../lib/utils';
 
 interface InventoryItem {
   id: string;
@@ -43,7 +44,7 @@ const Inventory = () => {
       setLoading(true);
       setError(null);
       const response = await api.get('/baker/inventory');
-      const data = response.data || response || [];
+      const data = response.ingredients || [];
       setItems(data);
 
       const cats = [...new Set(data.map((item: InventoryItem) => item.category))].filter(Boolean);
@@ -286,7 +287,7 @@ const Inventory = () => {
 
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-surface-400">
-                    R$ {item.cost_per_unit.toFixed(2)} por {item.unit}
+                    {formatBRL(item.cost_per_unit)} por {item.unit}
                   </div>
 
                   <div className="flex gap-2">

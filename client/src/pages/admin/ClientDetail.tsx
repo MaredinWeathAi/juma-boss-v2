@@ -33,6 +33,7 @@ import {
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatBRL } from '../../lib/utils';
 
 interface ClientDetailData {
   user: {
@@ -399,10 +400,12 @@ export default function ClientDetail() {
 
   const formatCurrency = (value: number | undefined | null) => {
     const num = value ?? 0;
-    return `$${num.toLocaleString('en-US', {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    })}`;
+    }).format(num);
   };
 
   const formatNumber = (value: number | undefined | null) => {
@@ -546,6 +549,90 @@ export default function ClientDetail() {
         </div>
       )}
 
+      {/* Subscription Details */}
+      {data && (
+        <div className="card animate-fade-in">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-white">Subscription Details</h2>
+              <p className="text-sm text-surface-400 mt-1">Current plan and billing information</p>
+            </div>
+            <button
+              onClick={() => setShowTierModal(true)}
+              className="btn-secondary flex items-center gap-2 text-sm"
+            >
+              <Crown size={14} />
+              Change Tier
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <p className="text-surface-400 text-sm">Current Tier</p>
+              <div className="inline-flex items-center">
+                <span
+                  className={`px-3 py-1 rounded-full text-sm font-medium capitalize ${
+                    TIER_COLORS[data.bakery.tier].bg
+                  } ${TIER_COLORS[data.bakery.tier].text}`}
+                >
+                  {data.bakery.tier}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-surface-400 text-sm">Monthly Price</p>
+              <p className="text-xl font-bold text-brand-400">
+                {formatBRL(data.subscription.monthly_price)}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-surface-400 text-sm">Status</p>
+              <div className="inline-flex items-center">
+                <StatusBadge status={data.subscription.status as any} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-surface-400 text-sm">Subscription Started</p>
+              <p className="text-white font-medium">
+                {new Date(data.subscription.started_at).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-surface-400 text-sm">Current Period Ends</p>
+              <p className="text-white font-medium">
+                {new Date(data.subscription.current_period_end).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-surface-400 text-sm">Days Remaining</p>
+              <p className="text-white font-medium">
+                {Math.max(
+                  0,
+                  Math.ceil(
+                    (new Date(data.subscription.current_period_end).getTime() - new Date().getTime()) /
+                      (1000 * 60 * 60 * 24)
+                  )
+                )}{' '}
+                days
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Charts Section */}
       {data && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -578,7 +665,7 @@ export default function ClientDetail() {
                   <YAxis
                     stroke="rgba(255, 255, 255, 0.3)"
                     style={{ fontSize: '0.875rem' }}
-                    tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                    tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
                   />
                   <Tooltip
                     contentStyle={{

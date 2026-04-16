@@ -11,6 +11,9 @@ import Inventory from './Inventory';
 import Payments from './Payments';
 import Reports from './Reports';
 import Settings from './Settings';
+import Subscription from './Subscription';
+import Production from './Production';
+import RecipeCost from './RecipeCost';
 
 export default function BakerApp() {
   return (
@@ -26,6 +29,9 @@ export default function BakerApp() {
         <Route path="/payments" element={<Payments />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/subscription" element={<Subscription />} />
+        <Route path="/production" element={<Production />} />
+        <Route path="/recipe-costing" element={<RecipeCost />} />
       </Routes>
     </BakerLayout>
   );

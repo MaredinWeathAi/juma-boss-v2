@@ -71,7 +71,8 @@ export default function Login() {
               </div>
               <span className="text-2xl font-bold text-white">Juma Boss</span>
             </div>
-            <p className="text-surface-400">Bakery Management Made Simple</p>
+            <p className="text-brand-400 font-medium mb-2">Gerencie sua padaria como um profissional</p>
+            <p className="text-surface-400 text-sm">Bakery Management Made Simple</p>
           </div>
 
           {/* Mode Tabs */}
@@ -106,7 +107,7 @@ export default function Login() {
 
           {/* Error Message */}
           {error && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex gap-2">
+            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex gap-3 animate-fade-in">
               <AlertCircle size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-red-400">{error}</p>
             </div>
@@ -170,11 +171,26 @@ export default function Login() {
                 )}
               </button>
 
-              <p className="text-center text-sm text-surface-400">
-                <a href="#" className="text-brand-400 hover:text-brand-300">
-                  Forgot password?
-                </a>
-              </p>
+              <div className="flex flex-col gap-4 pt-2">
+                <p className="text-center text-sm text-surface-400">
+                  <a href="#" className="text-brand-400 hover:text-brand-300 transition-colors">
+                    Esqueceu a senha?
+                  </a>
+                </p>
+                <div className="text-center text-sm border-t border-surface-700 pt-4">
+                  <p className="text-surface-400 mb-2">Não tem conta?</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('register');
+                      setError('');
+                    }}
+                    className="text-brand-400 hover:text-brand-300 font-medium transition-colors"
+                  >
+                    Comece grátis
+                  </button>
+                </div>
+              </div>
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
@@ -267,16 +283,31 @@ export default function Login() {
                 )}
               </button>
 
-              <p className="text-center text-xs text-surface-500">
-                By signing up, you agree to our Terms of Service and Privacy Policy
-              </p>
+              <div className="flex flex-col gap-4 pt-2">
+                <p className="text-center text-xs text-surface-500">
+                  Ao se registrar, você concorda com nossos Termos de Serviço e Política de Privacidade
+                </p>
+                <div className="text-center text-sm border-t border-surface-700 pt-4">
+                  <p className="text-surface-400 mb-2">Já tem conta?</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('login');
+                      setError('');
+                    }}
+                    className="text-brand-400 hover:text-brand-300 font-medium transition-colors"
+                  >
+                    Fazer login
+                  </button>
+                </div>
+              </div>
             </form>
           )}
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-8 text-sm text-surface-600">
-          <p>© 2026 Juma Boss. All rights reserved.</p>
+        <div className="text-center mt-8 text-xs text-surface-600">
+          <p>© 2026 Juma Boss. Todos os direitos reservados.</p>
         </div>
       </div>
     </div>

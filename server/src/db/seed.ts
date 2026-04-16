@@ -19,10 +19,13 @@ export function seedDatabase(): void {
     DELETE FROM orders;
     DELETE FROM customers;
     DELETE FROM products;
+    DELETE FROM billing_history;
+    DELETE FROM baker_payment_methods;
     DELETE FROM subscriptions;
     DELETE FROM bakeries;
     DELETE FROM users;
     DELETE FROM features;
+    DELETE FROM subscription_plans;
   `);
 
   const now = new Date().toISOString();
@@ -174,6 +177,96 @@ export function seedDatabase(): void {
     `).run(feature.id, feature.name, feature.slug, feature.description, feature.tier_required, feature.category, now);
   }
 
+  // Subscription plans (Brazilian market with R$ prices)
+  const subscriptionPlans = [
+    {
+      id: 'plan-free',
+      name: 'Grátis',
+      slug: 'free',
+      monthlyPrice: 0,
+      annualPrice: 0,
+      maxProducts: 10,
+      maxCustomers: 20,
+      maxOrdersPerMonth: 50,
+      features: ['Gestão de pedidos', 'Catálogo de produtos', 'Gestão de clientes', 'Suporte por email'],
+    },
+    {
+      id: 'plan-starter',
+      name: 'Iniciante',
+      slug: 'starter',
+      monthlyPrice: 149,
+      annualPrice: 1521,
+      maxProducts: 50,
+      maxCustomers: 100,
+      maxOrdersPerMonth: 500,
+      features: [
+        'Tudo do plano Grátis',
+        'Gestão de inventário',
+        'Relatórios básicos',
+        'Até 3 funcionários',
+        'Dashboard de vendas',
+        'Suporte prioritário',
+      ],
+    },
+    {
+      id: 'plan-pro',
+      name: 'Profissional',
+      slug: 'pro',
+      monthlyPrice: 399,
+      annualPrice: 4070,
+      maxProducts: 200,
+      maxCustomers: 500,
+      maxOrdersPerMonth: 2000,
+      features: [
+        'Tudo do plano Iniciante',
+        'Planejamento de produção',
+        'Gestão de vendas no atacado',
+        'Funcionários ilimitados',
+        'Análise avançada',
+        'Integração com marketplace',
+        'Suporte 24/7',
+      ],
+    },
+    {
+      id: 'plan-enterprise',
+      name: 'Empresa',
+      slug: 'enterprise',
+      monthlyPrice: 999,
+      annualPrice: 10190,
+      maxProducts: null,
+      maxCustomers: null,
+      maxOrdersPerMonth: null,
+      features: [
+        'Tudo do plano Profissional',
+        'Acesso à API REST',
+        'Múltiplas localizações',
+        'Suporte dedicado 24/7',
+        'White label',
+        'Integração customizada',
+        'Auditoria avançada',
+      ],
+    },
+  ];
+
+  for (const plan of subscriptionPlans) {
+    db.prepare(`
+      INSERT INTO subscription_plans (id, name, slug, monthly_price, annual_price, features, max_products, max_customers, max_orders_per_month, is_active, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      plan.id,
+      plan.name,
+      plan.slug,
+      plan.monthlyPrice,
+      plan.annualPrice,
+      JSON.stringify(plan.features),
+      plan.maxProducts,
+      plan.maxCustomers,
+      plan.maxOrdersPerMonth,
+      1,
+      now
+    );
+  }
+
   // Baker accounts with their data
   const bakers = [
     {
@@ -232,13 +325,14 @@ export function seedDatabase(): void {
     },
   ];
 
-  const tierPrices: any = { free: 0, starter: 29, pro: 79, enterprise: 199 };
+  const tierPrices: any = { free: 0, starter: 149, pro: 399, enterprise: 999 };
   const bakerPassword = bcryptjs.hashSync('demo123', 10);
 
   for (const baker of bakers) {
     const userId = uuidv4();
     const bakeryId = uuidv4();
     const subscriptionId = uuidv4();
+    const paymentMethodId = uuidv4();
 
     // Create user
     db.prepare(`
@@ -257,19 +351,82 @@ export function seedDatabase(): void {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(bakeryId, userId, baker.bakeryName, slug, '+1-555-0000', baker.tier, 'active', now, now);
 
-    // Create subscription
+    // Create payment method for the baker
+    const paymentDetails = {
+      pix_key: `cpf-${Math.floor(Math.random() * 100000000)}`,
+      type: 'pix',
+    };
     db.prepare(`
-      INSERT INTO subscriptions (id, bakery_id, tier, status, monthly_price, started_at, created_at)
+      INSERT INTO baker_payment_methods (id, bakery_id, type, label, is_default, details, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      paymentMethodId,
+      bakeryId,
+      'pix',
+      'PIX - CPF',
+      1,
+      JSON.stringify(paymentDetails),
+      now
+    );
+
+    // Calculate trial and billing dates
+    const startDate = new Date();
+    const trialDays = baker.tier !== 'free' ? 14 : 0;
+    const trialEndDate = new Date(startDate);
+    trialEndDate.setDate(trialEndDate.getDate() + trialDays);
+    const nextBillingDate = new Date(trialEndDate);
+    nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+
+    // Create subscription with new fields
+    db.prepare(`
+      INSERT INTO subscriptions (id, bakery_id, tier, status, monthly_price, started_at, current_period_end, trial_ends_at, next_billing_date, billing_cycle, payment_method_id, failed_payment_count, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       subscriptionId,
       bakeryId,
       baker.tier,
-      'active',
+      baker.tier !== 'free' ? 'trialing' : 'active',
       tierPrices[baker.tier],
-      now,
+      startDate.toISOString(),
+      nextBillingDate.toISOString(),
+      baker.tier !== 'free' ? trialEndDate.toISOString() : null,
+      nextBillingDate.toISOString(),
+      'monthly',
+      baker.tier !== 'free' ? paymentMethodId : null,
+      0,
       now
     );
+
+    // Create billing history records for paid subscriptions
+    if (baker.tier !== 'free') {
+      // Create a paid invoice for last month
+      const lastMonthStart = new Date();
+      lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
+      lastMonthStart.setDate(1);
+      const lastMonthEnd = new Date(lastMonthStart);
+      lastMonthEnd.setMonth(lastMonthEnd.getMonth() + 1);
+      lastMonthEnd.setDate(0);
+
+      const invoiceNumber = `JB-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
+
+      db.prepare(`
+        INSERT INTO billing_history (id, subscription_id, bakery_id, amount, currency, billing_period_start, billing_period_end, payment_method, payment_reference, status, invoice_number, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        uuidv4(),
+        subscriptionId,
+        bakeryId,
+        tierPrices[baker.tier],
+        'BRL',
+        lastMonthStart.toISOString(),
+        lastMonthEnd.toISOString(),
+        'pix',
+        `PIX-${Math.floor(Math.random() * 1000000)}`,
+        'paid',
+        invoiceNumber,
+        new Date(lastMonthStart).toISOString()
+      );
+    }
 
     // Create onboarding steps
     const steps = ['profile_setup', 'add_products', 'add_customers', 'create_first_order', 'team_setup'];

@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
+import Landing from './pages/Landing';
 import AdminLayout from './components/layouts/AdminLayout';
 
 // Lazy load admin pages
@@ -10,6 +11,7 @@ const ClientList = lazy(() => import('./pages/admin/ClientList'));
 const ClientDetail = lazy(() => import('./pages/admin/ClientDetail'));
 const Analytics = lazy(() => import('./pages/admin/Analytics'));
 const Subscriptions = lazy(() => import('./pages/admin/Subscriptions'));
+const FinancialReports = lazy(() => import('./pages/admin/FinancialReports'));
 const Onboarding = lazy(() => import('./pages/admin/Onboarding'));
 const Announcements = lazy(() => import('./pages/admin/Announcements'));
 const AuditLog = lazy(() => import('./pages/admin/AuditLog'));
@@ -39,19 +41,13 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode;
   return <>{children}</>;
 }
 
-// Home redirect based on role
-function Home() {
-  const { user, loading } = useAuth();
-
-  if (loading) return <PageLoader />;
-  if (!user) return <Navigate to="/login" replace />;
-
-  return <Navigate to={user.role === 'admin' ? '/admin' : '/app'} replace />;
-}
-
 export default function App() {
   return (
     <Routes>
+      {/* Public Landing Page */}
+      <Route path="/" element={<Landing />} />
+
+      {/* Login */}
       <Route path="/login" element={<Login />} />
 
       {/* Admin Portal */}
@@ -67,6 +63,7 @@ export default function App() {
                   <Route path="/clients/:id" element={<ClientDetail />} />
                   <Route path="/analytics" element={<Analytics />} />
                   <Route path="/subscriptions" element={<Subscriptions />} />
+                  <Route path="/financial" element={<FinancialReports />} />
                   <Route path="/onboarding" element={<Onboarding />} />
                   <Route path="/announcements" element={<Announcements />} />
                   <Route path="/audit-log" element={<AuditLog />} />
@@ -101,9 +98,6 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-
-      {/* Root */}
-      <Route path="/" element={<Home />} />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />

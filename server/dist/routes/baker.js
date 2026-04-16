@@ -1011,5 +1011,319 @@ router.get('/features', (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+// GET /baker/production - Production queue for today/tomorrow
+router.get('/production', (req, res) => {
+    try {
+        const bakeryId = getBakeryId(req.user.id);
+        const today = new Date().toISOString().split('T')[0];
+        const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+        const statuses = ['pending', 'confirmed', 'production', 'ready', 'delivered'];
+        const result = {
+            pending: [],
+            production: [],
+            ready: [],
+            delivered: [],
+        };
+        for (const status of statuses) {
+            const orders = db.prepare(`
+        SELECT o.id, o.order_number, o.total, o.status, o.delivery_date, c.name as customer_name
+        FROM orders o
+        JOIN customers c ON o.customer_id = c.id
+        WHERE o.bakery_id = ? AND o.status = ?
+          AND (DATE(o.delivery_date) = ? OR DATE(o.delivery_date) = ?)
+        ORDER BY o.delivery_date ASC, o.created_at ASC
+      `).all(bakeryId, status, today, tomorrow);
+            // Get items for each order
+            const enriched = orders.map((order) => {
+                const items = db.prepare(`
+          SELECT oi.*, p.name as product_name
+          FROM order_items oi
+          JOIN products p ON oi.product_id = p.id
+          WHERE oi.order_id = ?
+        `).all(order.id);
+                const isUrgent = order.delivery_date && order.delivery_date.split('T')[0] === today;
+                return {
+                    ...order,
+                    items,
+                    isUrgent,
+                };
+            });
+            result[status] = enriched;
+        }
+        // Summary stats
+        const allOrders = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM orders
+      WHERE bakery_id = ? AND (DATE(delivery_date) = ? OR DATE(delivery_date) = ?)
+    `).get(bakeryId, today, tomorrow);
+        res.json({
+            data: result,
+            stats: {
+                totalOrders: allOrders.count,
+                pendingCount: result.pending.length,
+                productionCount: result.production.length,
+                readyCount: result.ready.length,
+                deliveredCount: result.delivered.length,
+            },
+        });
+    }
+    catch (err) {
+        console.error('Get production error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+// GET /baker/recipes - All products with recipe costs
+router.get('/recipes', (req, res) => {
+    try {
+        const bakeryId = getBakeryId(req.user.id);
+        const products = db.prepare(`
+      SELECT * FROM products WHERE bakery_id = ? ORDER BY name ASC
+    `).all(bakeryId);
+        const enriched = products.map((product) => {
+            const recipeItems = db.prepare(`
+        SELECT ri.*, i.name as ingredient_name, i.cost_per_unit, i.unit
+        FROM recipe_items ri
+        JOIN ingredients i ON ri.ingredient_id = i.id
+        WHERE ri.product_id = ?
+      `).all(product.id);
+            let ingredientCost = 0;
+            recipeItems.forEach((item) => {
+                ingredientCost += (item.quantity_per_batch * item.cost_per_unit) / item.batch_size;
+            });
+            const margin = product.price > 0 ? ((product.price - ingredientCost) / product.price) * 100 : 0;
+            const profit = product.price - ingredientCost;
+            return {
+                ...product,
+                ingredientCost: parseFloat(ingredientCost.toFixed(2)),
+                margin: parseFloat(margin.toFixed(2)),
+                profit: parseFloat(profit.toFixed(2)),
+                recipeItems,
+            };
+        });
+        res.json({ products: enriched });
+    }
+    catch (err) {
+        console.error('Get recipes error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+// GET /baker/recipes/:productId
+router.get('/recipes/:productId', (req, res) => {
+    try {
+        const bakeryId = getBakeryId(req.user.id);
+        const productId = req.params.productId;
+        const product = db.prepare(`
+      SELECT * FROM products WHERE id = ? AND bakery_id = ?
+    `).get(productId, bakeryId);
+        if (!product) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+        const recipeItems = db.prepare(`
+      SELECT ri.*, i.name as ingredient_name, i.cost_per_unit, i.unit
+      FROM recipe_items ri
+      JOIN ingredients i ON ri.ingredient_id = i.id
+      WHERE ri.product_id = ?
+    `).all(productId);
+        let ingredientCost = 0;
+        recipeItems.forEach((item) => {
+            ingredientCost += (item.quantity_per_batch * item.cost_per_unit) / item.batch_size;
+        });
+        const margin = product.price > 0 ? ((product.price - ingredientCost) / product.price) * 100 : 0;
+        const profit = product.price - ingredientCost;
+        res.json({
+            ...product,
+            ingredientCost: parseFloat(ingredientCost.toFixed(2)),
+            margin: parseFloat(margin.toFixed(2)),
+            profit: parseFloat(profit.toFixed(2)),
+            recipeItems,
+        });
+    }
+    catch (err) {
+        console.error('Get recipe error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+// POST /baker/recipes/:productId/items
+router.post('/recipes/:productId/items', (req, res) => {
+    try {
+        const bakeryId = getBakeryId(req.user.id);
+        const productId = req.params.productId;
+        const { ingredientId, quantityPerBatch, batchSize } = req.body;
+        if (!ingredientId || quantityPerBatch === undefined) {
+            return res.status(400).json({ error: 'ingredientId and quantityPerBatch required' });
+        }
+        const product = db.prepare('SELECT id FROM products WHERE id = ? AND bakery_id = ?').get(productId, bakeryId);
+        if (!product) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+        const ingredient = db.prepare('SELECT id FROM ingredients WHERE id = ? AND bakery_id = ?').get(ingredientId, bakeryId);
+        if (!ingredient) {
+            return res.status(404).json({ error: 'Ingredient not found' });
+        }
+        const recipeItemId = uuidv4();
+        const now = new Date().toISOString();
+        db.prepare(`
+      INSERT INTO recipe_items (id, product_id, ingredient_id, quantity_per_batch, batch_size, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(recipeItemId, productId, ingredientId, quantityPerBatch, batchSize || 1, now);
+        const item = db.prepare(`
+      SELECT ri.*, i.name as ingredient_name, i.cost_per_unit, i.unit
+      FROM recipe_items ri
+      JOIN ingredients i ON ri.ingredient_id = i.id
+      WHERE ri.id = ?
+    `).get(recipeItemId);
+        res.status(201).json(item);
+    }
+    catch (err) {
+        console.error('Create recipe item error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+// DELETE /baker/recipes/:productId/items/:itemId
+router.delete('/recipes/:productId/items/:itemId', (req, res) => {
+    try {
+        const bakeryId = getBakeryId(req.user.id);
+        const productId = req.params.productId;
+        const itemId = req.params.itemId;
+        const product = db.prepare('SELECT id FROM products WHERE id = ? AND bakery_id = ?').get(productId, bakeryId);
+        if (!product) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+        const item = db.prepare('SELECT * FROM recipe_items WHERE id = ? AND product_id = ?').get(itemId, productId);
+        if (!item) {
+            return res.status(404).json({ error: 'Recipe item not found' });
+        }
+        db.prepare('DELETE FROM recipe_items WHERE id = ?').run(itemId);
+        res.json({ message: 'Recipe item deleted' });
+    }
+    catch (err) {
+        console.error('Delete recipe item error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+// GET /baker/recipe-costing - Costing summary for all products
+router.get('/recipe-costing', (req, res) => {
+    try {
+        const bakeryId = getBakeryId(req.user.id);
+        const products = db.prepare(`
+      SELECT * FROM products WHERE bakery_id = ? ORDER BY name ASC
+    `).all(bakeryId);
+        const costingData = products.map((product) => {
+            const recipeItems = db.prepare(`
+        SELECT ri.*, i.cost_per_unit
+        FROM recipe_items ri
+        JOIN ingredients i ON ri.ingredient_id = i.id
+        WHERE ri.product_id = ?
+      `).all(product.id);
+            let ingredientCost = 0;
+            recipeItems.forEach((item) => {
+                ingredientCost += (item.quantity_per_batch * item.cost_per_unit) / item.batch_size;
+            });
+            const margin = product.price > 0 ? ((product.price - ingredientCost) / product.price) * 100 : 0;
+            const profit = product.price - ingredientCost;
+            return {
+                id: product.id,
+                name: product.name,
+                price: product.price,
+                ingredientCost: parseFloat(ingredientCost.toFixed(2)),
+                margin: parseFloat(margin.toFixed(2)),
+                profit: parseFloat(profit.toFixed(2)),
+            };
+        });
+        const avgMargin = costingData.length > 0
+            ? costingData.reduce((sum, p) => sum + p.margin, 0) / costingData.length
+            : 0;
+        const lowestMarginProducts = costingData.slice().sort((a, b) => a.margin - b.margin).slice(0, 5);
+        const highestProfitProducts = costingData.slice().sort((a, b) => b.profit - a.profit).slice(0, 5);
+        res.json({
+            products: costingData,
+            summary: {
+                averageMargin: parseFloat(avgMargin.toFixed(2)),
+                totalProducts: costingData.length,
+                lowestMarginProducts,
+                highestProfitProducts,
+            },
+        });
+    }
+    catch (err) {
+        console.error('Get recipe costing error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+// GET /baker/reports/margins
+router.get('/reports/margins', (req, res) => {
+    try {
+        const bakeryId = getBakeryId(req.user.id);
+        const products = db.prepare(`
+      SELECT * FROM products WHERE bakery_id = ? ORDER BY name ASC
+    `).all(bakeryId);
+        const marginData = products.map((product) => {
+            const recipeItems = db.prepare(`
+        SELECT ri.*, i.cost_per_unit
+        FROM recipe_items ri
+        JOIN ingredients i ON ri.ingredient_id = i.id
+        WHERE ri.product_id = ?
+      `).all(product.id);
+            let ingredientCost = 0;
+            recipeItems.forEach((item) => {
+                ingredientCost += (item.quantity_per_batch * item.cost_per_unit) / item.batch_size;
+            });
+            const margin = product.price > 0 ? ((product.price - ingredientCost) / product.price) * 100 : 0;
+            return {
+                name: product.name,
+                margin: parseFloat(margin.toFixed(2)),
+            };
+        });
+        res.json(marginData);
+    }
+    catch (err) {
+        console.error('Get margins error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+// GET /baker/reports/velocity - Sales velocity per product
+router.get('/reports/velocity', (req, res) => {
+    try {
+        const bakeryId = getBakeryId(req.user.id);
+        const fourWeeksAgo = new Date(Date.now() - 28 * 86400000).toISOString();
+        const products = db.prepare(`
+      SELECT DISTINCT p.id, p.name
+      FROM products p
+      WHERE p.bakery_id = ?
+      ORDER BY p.name ASC
+    `).all(bakeryId);
+        const velocityData = products.map((product) => {
+            const sales = db.prepare(`
+        SELECT CAST(strftime('%W', o.created_at) as INTEGER) as week, SUM(oi.quantity) as quantity
+        FROM order_items oi
+        JOIN orders o ON oi.order_id = o.id
+        WHERE o.bakery_id = ? AND oi.product_id = ? AND o.created_at >= ?
+        GROUP BY week
+        ORDER BY week DESC
+        LIMIT 4
+      `).all(bakeryId, product.id, fourWeeksAgo);
+            const weeks = sales.map(s => s.quantity || 0);
+            let trend = 'flat';
+            if (weeks.length >= 2) {
+                if (weeks[0] > weeks[weeks.length - 1]) {
+                    trend = 'down';
+                }
+                else if (weeks[0] < weeks[weeks.length - 1]) {
+                    trend = 'up';
+                }
+            }
+            return {
+                name: product.name,
+                trend,
+                weekly: weeks,
+            };
+        });
+        res.json(velocityData);
+    }
+    catch (err) {
+        console.error('Get velocity error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 export default router;
 //# sourceMappingURL=baker.js.map

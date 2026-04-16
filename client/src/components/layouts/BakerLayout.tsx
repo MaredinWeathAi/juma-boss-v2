@@ -13,6 +13,9 @@ import {
   Menu,
   X,
   Bell,
+  ChefHat,
+  Calculator,
+  HelpCircle,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -42,6 +45,7 @@ const BakerLayout = ({ children }: { children: React.ReactNode }) => {
       title: 'Operations',
       items: [
         { label: 'Orders', path: '/app/orders', icon: <ShoppingCart size={20} /> },
+        { label: 'Producao', path: '/app/production', icon: <ChefHat size={20} /> },
         { label: 'Products', path: '/app/products', icon: <Package size={20} /> },
         { label: 'Customers', path: '/app/customers', icon: <Users size={20} /> },
       ],
@@ -50,6 +54,7 @@ const BakerLayout = ({ children }: { children: React.ReactNode }) => {
       title: 'Management',
       items: [
         { label: 'Inventory', path: '/app/inventory', icon: <Boxes size={20} /> },
+        { label: 'Custo de Receitas', path: '/app/recipe-costing', icon: <Calculator size={20} /> },
         { label: 'Payments', path: '/app/payments', icon: <CreditCard size={20} /> },
       ],
     },
@@ -62,6 +67,7 @@ const BakerLayout = ({ children }: { children: React.ReactNode }) => {
     {
       title: 'System',
       items: [
+        { label: 'Assinatura', path: '/app/subscription', icon: <CreditCard size={20} /> },
         { label: 'Settings', path: '/app/settings', icon: <Settings size={20} /> },
       ],
     },
@@ -120,10 +126,10 @@ const BakerLayout = ({ children }: { children: React.ReactNode }) => {
                     <li key={item.path}>
                       <Link
                         to={item.path}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
                           isActive(item.path)
                             ? 'bg-brand-500/20 text-brand-400 border-l-2 border-brand-500'
-                            : 'text-surface-400 hover:text-white hover:bg-surface-800'
+                            : 'text-surface-400 hover:text-white hover:bg-surface-800/50'
                         }`}
                       >
                         {item.icon}
@@ -136,22 +142,42 @@ const BakerLayout = ({ children }: { children: React.ReactNode }) => {
             ))}
           </nav>
 
-          {/* User Section */}
-          <div className="p-4 border-t border-surface-800 space-y-3">
-            {user && (
-              <div className="px-3 py-2 bg-surface-800 rounded-lg">
-                <p className="text-xs text-surface-500 mb-1">Logged in as</p>
-                <p className="text-sm font-medium text-white truncate">{user.name}</p>
-                <p className="text-xs text-surface-500 truncate">{user.email}</p>
-              </div>
-            )}
-            <button
-              onClick={logout}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-surface-400 hover:text-red-400 hover:bg-red-500/10 transition-colors text-sm font-medium"
-            >
-              <LogOut size={18} />
-              Logout
-            </button>
+          {/* Help and User Section */}
+          <div className="border-t border-surface-800">
+            {/* Help Link */}
+            <div className="p-4 border-b border-surface-800">
+              <a
+                href="#"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-surface-400 hover:text-white hover:bg-surface-800/50 transition-all duration-200 text-sm"
+              >
+                <HelpCircle size={18} />
+                <span className="font-medium">Ajuda</span>
+              </a>
+            </div>
+
+            {/* User Section */}
+            <div className="p-4 space-y-3">
+              {user && (
+                <div className="flex items-center gap-3 px-3 py-2 bg-surface-800 rounded-lg">
+                  {/* Avatar */}
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center font-bold text-surface-950 text-sm flex-shrink-0">
+                    {user.name.charAt(0).toUpperCase()}
+                  </div>
+                  {/* User Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{user.name}</p>
+                    <p className="text-xs text-surface-500 truncate">{user.email}</p>
+                  </div>
+                </div>
+              )}
+              <button
+                onClick={logout}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-surface-400 hover:text-red-400 hover:bg-red-500/10 transition-colors duration-200 text-sm font-medium"
+              >
+                <LogOut size={18} />
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </aside>

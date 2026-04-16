@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, AlertTriangle } from 'lucide-react';
+import { Plus, Search, AlertTriangle, ShoppingCart } from 'lucide-react';
 import api from '../../lib/api';
+import { formatBRL } from '../../lib/utils';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { StatusBadge } from '../../components/ui/StatusBadge';
+import { TableRowSkeleton } from '../../components/ui/LoadingSkeleton';
 
 interface OrderItem {
   id: string;
@@ -58,7 +62,7 @@ const Orders = () => {
         params.append('search', searchTerm);
       }
       const response = await api.get(`/baker/orders?${params.toString()}`);
-      setOrders(response.data || response || []);
+      setOrders(response.orders || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load orders');
     } finally {
@@ -196,24 +200,17 @@ const Orders = () => {
 
       {/* Orders List */}
       {loading ? (
-        <div className="space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="card animate-pulse">
-              <div className="h-4 bg-surface-800 rounded w-1/4 mb-4"></div>
-              <div className="h-4 bg-surface-800 rounded w-1/2"></div>
-            </div>
-          ))}
-        </div>
+        <TableRowSkeleton rows={5} />
       ) : orders.length === 0 ? (
-        <div className="card text-center py-12">
-          <p className="text-surface-400 mb-4">Nenhum pedido encontrado</p>
-          <button
-            onClick={() => navigate('/app/orders/new')}
-            className="btn-primary"
-          >
-            Criar primeiro pedido
-          </button>
-        </div>
+        <EmptyState
+          icon={<ShoppingCart size={28} />}
+          title="Nenhum pedido ainda"
+          description="Comece criando seu primeiro pedido para gerenciar seus clientes e entregas."
+          action={{
+            label: 'Criar primeiro pedido',
+            onClick: () => navigate('/app/orders/new'),
+          }}
+        />
       ) : (
         <div className="space-y-4">
           {orders.map((order) => (
@@ -233,7 +230,7 @@ const Orders = () => {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold text-white">R$ {order.total.toFixed(2)}</p>
+                    <p className="text-sm font-bold text-white">{formatBRL(order.total)}</p>
                     <p className="text-xs text-surface-400 mt-1">
                       {order.items.length} item{order.items.length !== 1 ? 's' : ''}
                     </p>
@@ -247,12 +244,8 @@ const Orders = () => {
 
                 {/* Status Badges */}
                 <div className="flex gap-2 flex-wrap">
-                  <span className={`badge text-xs font-medium ${getStatusColor(order.status)}`}>
-                    {getStatusLabel(order.status)}
-                  </span>
-                  <span className={`badge text-xs font-medium ${getPaymentStatusColor(order.payment_status)}`}>
-                    {getPaymentStatusLabel(order.payment_status)}
-                  </span>
+                  <StatusBadge status={order.status as any} label={getStatusLabel(order.status)} />
+                  <StatusBadge status={order.payment_status as any} label={getPaymentStatusLabel(order.payment_status)} />
                 </div>
               </div>
 

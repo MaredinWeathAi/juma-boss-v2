@@ -5,8 +5,15 @@ import {
   DollarSign,
   RotateCcw,
   ChevronDown,
+  AlertTriangle,
+  Search,
+  Zap,
+  Plus,
+  Trash2,
+  X,
 } from 'lucide-react';
 import api from '../../lib/api';
+import { formatBRL } from '../../lib/utils';
 
 interface Subscription {
   id: string;
@@ -22,13 +29,27 @@ interface Subscription {
 
 interface SubscriptionsData {
   subscriptions: Subscription[];
+  summary: {
+    total_active: number;
+    total_trialing: number;
+    total_past_due: number;
+    total_cancelled: number;
+    total_mrr: number;
+  };
+}
+
+interface DiscountModalState {
+  isOpen: boolean;
+  subscriptionId: string | null;
+  discountAmount: number;
+  discountReason: string;
 }
 
 const tierConfig = {
-  free: { label: 'Free', price: 0 },
-  starter: { label: 'Starter', price: 29 },
-  pro: { label: 'Pro', price: 79 },
-  enterprise: { label: 'Enterprise', price: 199 },
+  free: { label: 'Gratuito', price: 0 },
+  starter: { label: 'Iniciante', price: 149 },
+  pro: { label: 'Profissional', price: 399 },
+  enterprise: { label: 'Empresarial', price: 999 },
 };
 
 const statusConfig = {
@@ -63,8 +84,8 @@ const TierPricingCard = ({
     <div className="card hover:shadow-lg transition-shadow duration-300">
       <h3 className="font-bold text-lg text-white mb-2">{config.label}</h3>
       <div className="text-3xl font-bold text-brand-400 mb-2">
-        ${config.price}
-        <span className="text-sm text-surface-400 font-normal">/mo</span>
+        R$ {config.price.toLocaleString('pt-BR')}
+        <span className="text-sm text-surface-400 font-normal">/mês</span>
       </div>
       <p className="text-sm text-surface-400">
         <span className="text-lg font-bold text-white">{count}</span> subscriber{count !== 1 ? 's' : ''}
@@ -107,13 +128,128 @@ const TierBadge = ({ tier }: { tier: keyof typeof tierConfig }) => {
   );
 };
 
+const DiscountModal = ({
+  isOpen,
+  subscriptionId,
+  onClose,
+  onSubmit,
+  loading,
+}: {
+  isOpen: boolean;
+  subscriptionId: string | null;
+  onClose: () => void;
+  onSubmit: (subscriptionId: string, amount: number, reason: string) => Promise<void>;
+  loading: boolean;
+}) => {
+  const [amount, setAmount] = useState<number>(0);
+  const [reason, setReason] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    setError(null);
+    if (!subscriptionId) return;
+    if (amount <= 0) {
+      setError('Discount amount must be greater than 0');
+      return;
+    }
+    try {
+      await onSubmit(subscriptionId, amount, reason);
+      setAmount(0);
+      setReason('');
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to apply discount');
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-surface-900 rounded-xl border border-surface-800 w-full max-w-sm">
+        <div className="flex items-center justify-between p-6 border-b border-surface-800">
+          <h2 className="text-lg font-bold text-white">Apply Discount</h2>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-surface-800 rounded-lg transition-colors"
+          >
+            <X size={20} className="text-surface-400" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {error && (
+            <div className="flex gap-2 p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
+              <AlertTriangle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-400">{error}</p>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-surface-300 mb-2">
+              Discount Amount (R$)
+            </label>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+              className="input w-full"
+              placeholder="100.00"
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-surface-300 mb-2">
+              Reason (Optional)
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="input w-full resize-none"
+              rows={3}
+              placeholder="e.g., Service issue, customer loyalty..."
+              disabled={loading}
+            />
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={onClose}
+              className="btn-secondary flex-1"
+              disabled={loading}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              className="btn-primary flex-1"
+              disabled={loading || amount <= 0}
+            >
+              {loading ? 'Applying...' : 'Apply Discount'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function Subscriptions() {
   const [data, setData] = useState<SubscriptionsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | Subscription['status']>('all');
+  const [filterTier, setFilterTier] = useState<'all' | Subscription['tier']>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newTier, setNewTier] = useState<keyof typeof tierConfig | null>(null);
+  const [discountModal, setDiscountModal] = useState<DiscountModalState>({
+    isOpen: false,
+    subscriptionId: null,
+    discountAmount: 0,
+    discountReason: '',
+  });
 
   useEffect(() => {
     const fetchSubscriptions = async () => {
@@ -160,6 +296,25 @@ export default function Subscriptions() {
     }
   };
 
+  const handleApplyDiscount = async (subscriptionId: string, amount: number, reason: string) => {
+    try {
+      await api.post(`/admin/subscriptions/${subscriptionId}/discount`, {
+        amount,
+        reason,
+      });
+      if (data) {
+        setData({
+          ...data,
+          subscriptions: data.subscriptions,
+        });
+      }
+      setDiscountModal({ isOpen: false, subscriptionId: null, discountAmount: 0, discountReason: '' });
+    } catch (err) {
+      console.error('Failed to apply discount:', err);
+      throw err;
+    }
+  };
+
   if (error && !data) {
     return (
       <div className="space-y-8">
@@ -186,11 +341,13 @@ export default function Subscriptions() {
   }
 
   const subscriptions = data?.subscriptions || [];
-
-  // Calculate MRR
-  const mrr = subscriptions
-    .filter((s) => s.status === 'active' || s.status === 'trialing')
-    .reduce((sum, s) => sum + s.monthly_price, 0);
+  const summary = data?.summary || {
+    total_active: 0,
+    total_trialing: 0,
+    total_past_due: 0,
+    total_cancelled: 0,
+    total_mrr: 0,
+  };
 
   // Count by tier
   const tierCounts = {
@@ -203,7 +360,19 @@ export default function Subscriptions() {
   // Filter subscriptions
   let filteredSubscriptions = subscriptions;
   if (filterStatus !== 'all') {
-    filteredSubscriptions = subscriptions.filter((s) => s.status === filterStatus);
+    filteredSubscriptions = filteredSubscriptions.filter((s) => s.status === filterStatus);
+  }
+  if (filterTier !== 'all') {
+    filteredSubscriptions = filteredSubscriptions.filter((s) => s.tier === filterTier);
+  }
+  if (searchTerm) {
+    const lowerSearch = searchTerm.toLowerCase();
+    filteredSubscriptions = filteredSubscriptions.filter(
+      (s) =>
+        s.bakery_name.toLowerCase().includes(lowerSearch) ||
+        s.owner_name.toLowerCase().includes(lowerSearch) ||
+        s.owner_email.toLowerCase().includes(lowerSearch)
+    );
   }
 
   const formatDate = (dateString: string) => {
@@ -217,20 +386,35 @@ export default function Subscriptions() {
 
   return (
     <div className="space-y-8">
-      {/* Header with MRR */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <h1 className="page-title">Subscriptions</h1>
           <p className="page-subtitle">Manage subscription plans and billing</p>
         </div>
-        <div className="card sm:w-auto">
-          <p className="text-surface-400 text-sm mb-1">Monthly Recurring Revenue</p>
-          <p className="text-3xl font-bold text-brand-400">
-            ${mrr.toLocaleString('en-US', {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
-          </p>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="card">
+          <p className="text-surface-400 text-xs font-medium mb-1">Total Active</p>
+          <p className="text-2xl font-bold text-emerald-400">{summary.total_active}</p>
+        </div>
+        <div className="card">
+          <p className="text-surface-400 text-xs font-medium mb-1">Trials</p>
+          <p className="text-2xl font-bold text-blue-400">{summary.total_trialing}</p>
+        </div>
+        <div className="card">
+          <p className="text-surface-400 text-xs font-medium mb-1">Past Due</p>
+          <p className="text-2xl font-bold text-yellow-400">{summary.total_past_due}</p>
+        </div>
+        <div className="card">
+          <p className="text-surface-400 text-xs font-medium mb-1">Cancelled</p>
+          <p className="text-2xl font-bold text-red-400">{summary.total_cancelled}</p>
+        </div>
+        <div className="card">
+          <p className="text-surface-400 text-xs font-medium mb-1">Total MRR</p>
+          <p className="text-2xl font-bold text-brand-400">{formatBRL(summary.total_mrr)}</p>
         </div>
       </div>
 
@@ -242,48 +426,130 @@ export default function Subscriptions() {
         <TierPricingCard tier="enterprise" count={tierCounts.enterprise} loading={loading} />
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => setFilterStatus('all')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            filterStatus === 'all'
-              ? 'bg-brand-500 text-white'
-              : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
-          }`}
-        >
-          All
-        </button>
-        <button
-          onClick={() => setFilterStatus('active')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            filterStatus === 'active'
-              ? 'bg-brand-500 text-white'
-              : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
-          }`}
-        >
-          Active
-        </button>
-        <button
-          onClick={() => setFilterStatus('past_due')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            filterStatus === 'past_due'
-              ? 'bg-brand-500 text-white'
-              : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
-          }`}
-        >
-          Past Due
-        </button>
-        <button
-          onClick={() => setFilterStatus('cancelled')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            filterStatus === 'cancelled'
-              ? 'bg-brand-500 text-white'
-              : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
-          }`}
-        >
-          Cancelled
-        </button>
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-surface-500" size={18} />
+        <input
+          type="text"
+          placeholder="Search by baker name, bakery, or email..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="input w-full pl-12"
+        />
+      </div>
+
+      {/* Filter Tabs - Status */}
+      <div className="space-y-3">
+        <p className="text-sm font-semibold text-surface-300">By Status</p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setFilterStatus('all')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
+              filterStatus === 'all'
+                ? 'bg-brand-500 text-white'
+                : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setFilterStatus('active')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
+              filterStatus === 'active'
+                ? 'bg-emerald-500/30 text-emerald-400 border border-emerald-500/50'
+                : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
+            }`}
+          >
+            Active
+          </button>
+          <button
+            onClick={() => setFilterStatus('trialing')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
+              filterStatus === 'trialing'
+                ? 'bg-blue-500/30 text-blue-400 border border-blue-500/50'
+                : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
+            }`}
+          >
+            Trialing
+          </button>
+          <button
+            onClick={() => setFilterStatus('past_due')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
+              filterStatus === 'past_due'
+                ? 'bg-yellow-500/30 text-yellow-400 border border-yellow-500/50'
+                : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
+            }`}
+          >
+            Past Due
+          </button>
+          <button
+            onClick={() => setFilterStatus('cancelled')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
+              filterStatus === 'cancelled'
+                ? 'bg-red-500/30 text-red-400 border border-red-500/50'
+                : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
+            }`}
+          >
+            Cancelled
+          </button>
+        </div>
+      </div>
+
+      {/* Filter Pills - Tier */}
+      <div className="space-y-3">
+        <p className="text-sm font-semibold text-surface-300">By Tier</p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setFilterTier('all')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
+              filterTier === 'all'
+                ? 'bg-brand-500 text-white'
+                : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
+            }`}
+          >
+            All Tiers
+          </button>
+          <button
+            onClick={() => setFilterTier('free')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
+              filterTier === 'free'
+                ? 'bg-surface-700 text-white'
+                : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
+            }`}
+          >
+            Free
+          </button>
+          <button
+            onClick={() => setFilterTier('starter')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
+              filterTier === 'starter'
+                ? 'bg-blue-500/30 text-blue-400 border border-blue-500/50'
+                : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
+            }`}
+          >
+            Starter
+          </button>
+          <button
+            onClick={() => setFilterTier('pro')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
+              filterTier === 'pro'
+                ? 'bg-brand-500/30 text-brand-400 border border-brand-500/50'
+                : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
+            }`}
+          >
+            Pro
+          </button>
+          <button
+            onClick={() => setFilterTier('enterprise')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
+              filterTier === 'enterprise'
+                ? 'bg-purple-500/30 text-purple-400 border border-purple-500/50'
+                : 'bg-surface-800 text-surface-400 hover:bg-surface-700'
+            }`}
+          >
+            Enterprise
+          </button>
+        </div>
       </div>
 
       {/* Subscriptions Table */}
@@ -311,10 +577,11 @@ export default function Subscriptions() {
                   <th className="text-left py-3 px-3 text-surface-400 font-medium">Baker</th>
                   <th className="text-left py-3 px-3 text-surface-400 font-medium">Bakery</th>
                   <th className="text-left py-3 px-3 text-surface-400 font-medium">Tier</th>
-                  <th className="text-right py-3 px-3 text-surface-400 font-medium">Price</th>
+                  <th className="text-left py-3 px-3 text-surface-400 font-medium">Monthly Price</th>
                   <th className="text-left py-3 px-3 text-surface-400 font-medium">Status</th>
                   <th className="text-left py-3 px-3 text-surface-400 font-medium">Started</th>
-                  <th className="text-left py-3 px-3 text-surface-400 font-medium">Period End</th>
+                  <th className="text-left py-3 px-3 text-surface-400 font-medium">Next Billing</th>
+                  <th className="text-left py-3 px-3 text-surface-400 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -354,8 +621,8 @@ export default function Subscriptions() {
                         </button>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-right text-white font-medium">
-                      ${tierConfig[sub.tier].price}
+                    <td className="py-3 px-3 text-left text-white font-medium">
+                      {formatBRL(sub.monthly_price)}
                     </td>
                     <td className="py-3 px-3">
                       <StatusBadge status={sub.status} />
@@ -365,6 +632,17 @@ export default function Subscriptions() {
                     </td>
                     <td className="py-3 px-3 text-surface-400 text-xs">
                       {formatDate(sub.current_period_end)}
+                    </td>
+                    <td className="py-3 px-3">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setDiscountModal({ ...discountModal, isOpen: true, subscriptionId: sub.id })}
+                          className="p-1.5 hover:bg-surface-800 rounded-lg transition-colors text-surface-400 hover:text-yellow-400"
+                          title="Apply discount"
+                        >
+                          <Zap size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -377,6 +655,15 @@ export default function Subscriptions() {
           </div>
         )}
       </div>
+
+      {/* Discount Modal */}
+      <DiscountModal
+        isOpen={discountModal.isOpen}
+        subscriptionId={discountModal.subscriptionId}
+        onClose={() => setDiscountModal({ ...discountModal, isOpen: false, subscriptionId: null })}
+        onSubmit={handleApplyDiscount}
+        loading={loading}
+      />
     </div>
   );
 }

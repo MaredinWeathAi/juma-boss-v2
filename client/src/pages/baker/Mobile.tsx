@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatBRL } from '../../lib/utils';
 import {
   Home,
   ShoppingCart,
@@ -18,6 +19,8 @@ import {
   Edit2,
   ArrowLeft,
   RefreshCw,
+  Star,
+  CreditCard,
 } from 'lucide-react';
 import api from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -35,7 +38,8 @@ type Screen =
   | 'money'
   | 'money-receive'
   | 'profile'
-  | 'profile-edit';
+  | 'profile-edit'
+  | 'profile-subscription';
 
 interface Order {
   id: string;
@@ -160,7 +164,7 @@ function HomeScreen({
         <div className="border-t border-surface-950/20 pt-3">
           <p className="text-sm opacity-90">Faturamento este mês</p>
           <p className="text-2xl font-bold mt-1">
-            R$ {data.stats.revenueThisMonth?.toFixed(2) || '0,00'}
+            {formatBRL(data.stats.revenueThisMonth || 0)}
           </p>
         </div>
       </div>
@@ -194,7 +198,7 @@ function HomeScreen({
                   <p className="font-semibold text-white text-sm">{order.customerName}</p>
                   <p className="text-surface-400 text-xs mt-1">{order.orderNumber}</p>
                   <p className="text-brand-400 font-semibold text-sm mt-2">
-                    R$ {order.total.toFixed(2)}
+                    {formatBRL(order.total)}
                   </p>
                 </div>
                 <div className="ml-2 text-right">
@@ -339,7 +343,7 @@ function OrdersScreen({
               </div>
               <div className="flex items-center justify-between mt-3">
                 <p className="text-brand-400 font-semibold">
-                  R$ {order.total.toFixed(2)}
+                  {formatBRL(order.total)}
                 </p>
                 <span
                   className={`text-xs px-3 py-1 rounded-full font-medium ${getStatusColor(
@@ -446,11 +450,11 @@ function OrderDetailScreen({
                 <div>
                   <p className="text-white font-medium text-sm">{item.name}</p>
                   <p className="text-surface-400 text-xs">
-                    {item.quantity}x R$ {item.price.toFixed(2)}
+                    {item.quantity}x {formatBRL(item.price)}
                   </p>
                 </div>
                 <p className="text-brand-400 font-semibold text-sm">
-                  R$ {(item.quantity * item.price).toFixed(2)}
+                  {formatBRL(item.quantity * item.price)}
                 </p>
               </div>
             ))}
@@ -461,7 +465,7 @@ function OrderDetailScreen({
         <div className="card p-4 bg-gradient-to-r from-brand-500/10 to-emerald-500/10 border border-brand-500/20">
           <p className="text-surface-400 text-sm mb-1">Total</p>
           <p className="text-3xl font-bold text-brand-400">
-            R$ {order.total.toFixed(2)}
+            {formatBRL(order.total)}
           </p>
         </div>
 
@@ -746,7 +750,7 @@ function NewOrderProductsScreen({
                 )}
               </div>
               <p className="text-brand-400 font-semibold ml-2">
-                R$ {product.price.toFixed(2)}
+                {formatBRL(product.price)}
               </p>
             </div>
             <div className="flex items-center gap-2 bg-surface-800/50 rounded w-fit ml-auto">
@@ -786,7 +790,7 @@ function NewOrderProductsScreen({
           <div className="mb-3 flex justify-between">
             <span className="text-surface-400">{selectedItems.length} item(ns)</span>
             <span className="text-2xl font-bold text-brand-400">
-              R$ {total.toFixed(2)}
+              {formatBRL(total)}
             </span>
           </div>
           <button
@@ -869,11 +873,10 @@ function NewOrderConfirmScreen({
                 <p className="text-surface-400 text-xs">{item.quantity}x</p>
               </div>
               <p className="text-brand-400 font-semibold text-sm">
-                R${' '}
-                {(
+                {formatBRL(
                   (products.find((p) => p.id === item.productId)?.price || 0) *
                   item.quantity
-                ).toFixed(2)}
+                )}
               </p>
             </div>
           ))}
@@ -882,7 +885,7 @@ function NewOrderConfirmScreen({
         {/* Total */}
         <div className="card p-4 bg-gradient-to-r from-brand-500/10 to-emerald-500/10 border border-brand-500/20">
           <p className="text-surface-400 text-sm mb-1">Total do Pedido</p>
-          <p className="text-3xl font-bold text-brand-400">R$ {total.toFixed(2)}</p>
+          <p className="text-3xl font-bold text-brand-400">{formatBRL(total)}</p>
         </div>
 
         {/* Due Date */}
@@ -963,7 +966,7 @@ function MoneyScreen({
       <div className="space-y-2">
         <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-4 text-white shadow-lg">
           <p className="text-sm opacity-90 font-medium">Recebido este mês</p>
-          <p className="text-3xl font-bold mt-2">R$ {summary.total?.toFixed(2) || '0,00'}</p>
+          <p className="text-3xl font-bold mt-2">{formatBRL(summary.total || 0)}</p>
         </div>
 
         {/* Payment Methods Breakdown */}
@@ -978,7 +981,7 @@ function MoneyScreen({
               className={`bg-gradient-to-br ${method.color} rounded-lg p-3 text-white text-center`}
             >
               <p className="text-xs opacity-90 font-medium">{method.label}</p>
-              <p className="text-lg font-bold mt-1">R$ {(method.value || 0).toFixed(2)}</p>
+              <p className="text-lg font-bold mt-1">{formatBRL(method.value || 0)}</p>
             </div>
           ))}
         </div>
@@ -1023,7 +1026,7 @@ function MoneyScreen({
                     </p>
                   </div>
                   <p className="text-emerald-400 font-semibold text-sm">
-                    R$ {payment.amount?.toFixed(2)}
+                    {formatBRL(payment.amount || 0)}
                   </p>
                 </div>
                 <p className="text-surface-500 text-xs mt-2">{payment.date}</p>
@@ -1165,14 +1168,221 @@ function ReceivePaymentScreen({
   );
 }
 
+// Subscription Screen
+function SubscriptionScreen({
+  user,
+  onBack,
+}: {
+  user: any;
+  onBack: () => void;
+}) {
+  const [loading, setLoading] = React.useState(true);
+  const [subscription, setSubscription] = React.useState<any>(null);
+  const [plans, setPlans] = React.useState<any[]>([]);
+  const [billingCycle, setBillingCycle] = React.useState<'monthly' | 'annual'>('monthly');
+  const [upgrading, setUpgrading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    fetchSubscriptionData();
+  }, []);
+
+  const fetchSubscriptionData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [currentRes, plansRes] = await Promise.all([
+        api.get('/subscriptions/current'),
+        api.get('/subscriptions/plans'),
+      ]);
+      setSubscription(currentRes.subscription);
+      setPlans(plansRes || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar assinatura');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpgrade = async (planSlug: string) => {
+    if (subscription?.tier === planSlug && subscription?.billing_cycle === billingCycle) {
+      return;
+    }
+
+    try {
+      setUpgrading(true);
+      setError(null);
+      await api.post('/subscriptions/upgrade', {
+        planSlug,
+        billingCycle,
+      });
+      await fetchSubscriptionData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao atualizar plano');
+    } finally {
+      setUpgrading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-4 pb-24 space-y-4">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 text-brand-400 mb-4"
+        >
+          <ArrowLeft size={20} />
+          Voltar
+        </button>
+        <div className="animate-pulse space-y-3">
+          <div className="h-20 bg-surface-800 rounded-lg"></div>
+          <div className="h-32 bg-surface-800 rounded-lg"></div>
+        </div>
+      </div>
+    );
+  }
+
+  const currentPlan = plans.find(p => p.slug === subscription?.tier);
+
+  return (
+    <div className="p-4 pb-24 space-y-6">
+      {/* Back Button */}
+      <button
+        onClick={onBack}
+        className="flex items-center gap-2 text-brand-400 font-semibold"
+      >
+        <ArrowLeft size={20} />
+        Voltar
+      </button>
+
+      {/* Error */}
+      {error && (
+        <div className="card bg-red-500/20 border-red-500/30 border p-3 flex gap-2">
+          <AlertCircle size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
+          <p className="text-red-300 text-sm">{error}</p>
+        </div>
+      )}
+
+      {/* Current Plan */}
+      {subscription && (
+        <div className="card p-4 bg-gradient-to-br from-brand-500/20 to-amber-500/20 border-brand-500/30">
+          <p className="text-surface-400 text-xs mb-1">Plano Atual</p>
+          <h2 className="text-2xl font-bold text-white mb-3">{currentPlan?.name}</h2>
+
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-surface-400">Status:</span>
+              <span className={`font-semibold ${
+                subscription.status === 'active' ? 'text-emerald-400' :
+                subscription.status === 'trialing' ? 'text-blue-400' :
+                'text-surface-400'
+              }`}>
+                {subscription.status === 'active' ? 'Ativo' :
+                 subscription.status === 'trialing' ? 'Avaliação' :
+                 subscription.status}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-surface-400">Próxima cobrança:</span>
+              <span className="text-white font-semibold">
+                {new Date(subscription.next_billing_date).toLocaleDateString('pt-BR')}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-surface-400">Valor mensal:</span>
+              <span className="text-brand-400 font-bold">
+                {formatBRL(subscription.monthly_price)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Billing Cycle Toggle */}
+      <div className="flex gap-2 bg-surface-800 p-1 rounded-lg">
+        <button
+          onClick={() => setBillingCycle('monthly')}
+          className={`flex-1 py-2 px-3 rounded text-sm font-semibold transition-colors ${
+            billingCycle === 'monthly'
+              ? 'bg-brand-500 text-surface-950'
+              : 'text-surface-400 hover:text-white'
+          }`}
+        >
+          Mensal
+        </button>
+        <button
+          onClick={() => setBillingCycle('annual')}
+          className={`flex-1 py-2 px-3 rounded text-sm font-semibold transition-colors ${
+            billingCycle === 'annual'
+              ? 'bg-brand-500 text-surface-950'
+              : 'text-surface-400 hover:text-white'
+          }`}
+        >
+          Anual
+        </button>
+      </div>
+
+      {/* Plan Cards */}
+      <div>
+        <p className="text-surface-400 text-xs font-semibold mb-3 uppercase">Selecionar Plano</p>
+        <div className="space-y-3">
+          {plans.map((plan) => (
+            <div
+              key={plan.id}
+              className={`card p-4 border ${
+                subscription?.tier === plan.slug
+                  ? 'border-brand-500 bg-brand-500/10'
+                  : 'border-surface-700 bg-surface-800'
+              }`}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h3 className="text-white font-bold">{plan.name}</h3>
+                  <p className="text-surface-400 text-xs mt-1">{plan.description}</p>
+                </div>
+                {subscription?.tier === plan.slug && (
+                  <Star size={18} className="text-brand-400 fill-brand-400 flex-shrink-0" />
+                )}
+              </div>
+
+              <p className="text-2xl font-bold text-white mb-3">
+                {formatBRL(billingCycle === 'annual' ? plan.annual_price : plan.monthly_price)}
+              </p>
+
+              <button
+                onClick={() => handleUpgrade(plan.slug)}
+                disabled={
+                  upgrading ||
+                  (subscription?.tier === plan.slug && subscription?.billing_cycle === billingCycle)
+                }
+                className={`w-full py-2 rounded-lg font-semibold text-sm transition-colors ${
+                  subscription?.tier === plan.slug && subscription?.billing_cycle === billingCycle
+                    ? 'bg-surface-700 text-surface-400 cursor-default'
+                    : plan.slug === 'free'
+                      ? 'bg-surface-700 text-white hover:bg-surface-600'
+                      : 'bg-brand-500 text-surface-950 hover:bg-brand-600'
+                }`}
+              >
+                {upgrading ? 'Processando...' : 'Selecionar'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Profile Screen
 function ProfileScreen({
   user,
   onEditProfile,
+  onSubscription,
   onLogout,
 }: {
   user: any;
   onEditProfile: () => void;
+  onSubscription: () => void;
   onLogout: () => void;
 }) {
   const initials = user?.name
@@ -1221,6 +1431,15 @@ function ProfileScreen({
       >
         <Edit2 size={20} />
         Editar Perfil
+      </button>
+
+      {/* Subscription Button */}
+      <button
+        onClick={onSubscription}
+        className="w-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 border border-amber-500/30"
+      >
+        <CreditCard size={20} />
+        Gerenciar Assinatura
       </button>
 
       {/* Logout Button */}
@@ -1695,6 +1914,7 @@ export default function BakerMobile() {
           <ProfileScreen
             user={user}
             onEditProfile={() => setScreen('profile-edit')}
+            onSubscription={() => setScreen('profile-subscription')}
             onLogout={handleLogout}
           />
         );
@@ -1707,6 +1927,13 @@ export default function BakerMobile() {
             saving={submitting}
           />
         );
+      case 'profile-subscription':
+        return (
+          <SubscriptionScreen
+            user={user}
+            onBack={() => setScreen('profile')}
+          />
+        );
       default:
         return <HomeScreen data={dashboardData} onNewOrder={handleNewOrder} onOrders={() => setScreen('orders')} />;
     }
@@ -1714,7 +1941,7 @@ export default function BakerMobile() {
 
   // Check if showing fullscreen screens
   const isFullScreen =
-    screen.startsWith('orders-new') || screen === 'money-receive' || screen === 'profile-edit' || screen === 'orders-detail';
+    screen.startsWith('orders-new') || screen === 'money-receive' || screen === 'profile-edit' || screen === 'profile-subscription' || screen === 'orders-detail';
 
   return (
     <div className="max-w-md mx-auto h-screen bg-surface-950 flex flex-col overflow-hidden">
