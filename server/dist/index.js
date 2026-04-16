@@ -1,8 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { initDB } from './db/index.js';
+import { initDB, getDB } from './db/index.js';
+import { seedDatabase } from './db/seed.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 import bakerRoutes from './routes/baker.js';
@@ -15,6 +17,43 @@ app.use(cors());
 app.use(express.json());
 // Initialize database
 initDB();
+// Auto-seed if database is empty (handles Railway deploys where seed step may fail)
+try {
+    const db = getDB();
+    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
+    if (userCount.count === 0) {
+        console.log('Empty database detected — running auto-seed...');
+        seedDatabase();
+        console.log('Database seeded successfully on startup.');
+    }
+    else {
+        console.log(`Database has ${userCount.count} users — skipping seed.`);
+    }
+}
+catch (err) {
+    console.error('Auto-seed check failed:', err);
+}
+// Health check (before auth middleware)
+app.get('/api/health', (_req, res) => {
+    try {
+        const db = getDB();
+        const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
+        const clientDistPath = path.join(__dirname, '../../client/dist');
+        const clientExists = fs.existsSync(path.join(clientDistPath, 'index.html'));
+        res.json({
+            status: 'ok',
+            port: PORT,
+            users: userCount.count,
+            clientDist: clientExists,
+            clientPath: clientDistPath,
+            cwd: process.cwd(),
+            dirname: __dirname,
+        });
+    }
+    catch (err) {
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -29,14 +68,25 @@ app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
         return res.status(404).json({ error: 'API endpoint not found' });
     }
-    res.sendFile(path.join(clientDist, 'index.html'));
+    const indexPath = path.join(clientDist, 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    }
+    else {
+        res.status(500).json({
+            error: 'Client build not found',
+            expected: indexPath,
+            cwd: process.cwd(),
+            dirname: __dirname,
+        });
+    }
 });
 // Error handler (MUST have 4 params for Express to recognize it)
 app.use((err, _req, res, _next) => {
     console.error('Server error:', err);
     res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
 });
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`Juma Boss v2 server running on port ${PORT}`);
 });
 //# sourceMappingURL=index.js.map
