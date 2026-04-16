@@ -242,7 +242,7 @@ export default function Dashboard() {
         setLoading(true);
         setError(null);
         const response = await api.get('/admin/dashboard');
-        setData(response.data);
+        setData(response);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : 'Failed to load dashboard data'

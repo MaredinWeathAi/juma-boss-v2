@@ -79,7 +79,7 @@ export default function Onboarding() {
         setLoading(true);
         setError(null);
         const response = await api.get('/admin/onboarding');
-        setData(response.data);
+        setData(response);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : 'Failed to load onboarding data'

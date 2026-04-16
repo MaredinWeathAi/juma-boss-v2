@@ -105,7 +105,7 @@ export default function Analytics() {
         setLoading(true);
         setError(null);
         const response = await api.get('/admin/analytics');
-        setData(response.data);
+        setData(response);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : 'Failed to load analytics'
