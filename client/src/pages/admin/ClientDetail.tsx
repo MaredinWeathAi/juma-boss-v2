@@ -88,7 +88,8 @@ interface ClientDetailData {
     id: string;
     name: string;
     total_spent: number;
-    total_orders: number;
+    total_orders?: number;
+    order_count?: number;
   }>;
 }
 
@@ -396,15 +397,17 @@ export default function ClientDetail() {
     }
   };
 
-  const formatCurrency = (value: number) => {
-    return `$${value.toLocaleString('en-US', {
+  const formatCurrency = (value: number | undefined | null) => {
+    const num = value ?? 0;
+    return `$${num.toLocaleString('en-US', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     })}`;
   };
 
-  const formatNumber = (value: number) => {
-    return value.toLocaleString('en-US');
+  const formatNumber = (value: number | undefined | null) => {
+    const num = value ?? 0;
+    return num.toLocaleString('en-US');
   };
 
   if (error && !data) {
@@ -767,7 +770,7 @@ export default function ClientDetail() {
                       {idx === 0 && <Crown size={16} className="text-brand-400" />}
                     </p>
                     <p className="text-xs text-surface-400 mt-1">
-                      {customer.total_orders} orders
+                      {customer.total_orders || customer.order_count || 0} orders
                     </p>
                   </div>
                   <p className="font-bold text-brand-400">{formatCurrency(customer.total_spent)}</p>

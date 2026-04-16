@@ -572,7 +572,7 @@ export function seedDatabase(): void {
     adminId,
     'New Analytics Dashboard Available',
     'Check out our new advanced analytics dashboard for better insights into your business.',
-    JSON.stringify(['pro', 'enterprise']),
+    'pro,enterprise',
     1,
     new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
   );

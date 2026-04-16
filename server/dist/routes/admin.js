@@ -179,6 +179,15 @@ router.get('/clients/:id', (req, res) => {
         const products = db.prepare('SELECT COUNT(*) as count FROM products WHERE bakery_id = ?').get(bakery.id);
         const customers = db.prepare('SELECT COUNT(*) as count FROM customers WHERE bakery_id = ?').get(bakery.id);
         const employees = db.prepare('SELECT COUNT(*) as count FROM employees WHERE bakery_id = ?').get(bakery.id);
+        const pendingOrders = db.prepare("SELECT COUNT(*) as count FROM orders WHERE bakery_id = ? AND status = 'pending'").get(bakery.id);
+        // Monthly revenue (current month)
+        const now = new Date();
+        const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const monthlyRevenueData = db.prepare(`
+      SELECT COALESCE(SUM(total), 0) as revenue
+      FROM orders
+      WHERE bakery_id = ? AND strftime('%Y-%m', created_at) = ?
+    `).get(bakery.id, currentMonthStr);
         // Revenue by month (last 6 months)
         const revenueByMonth = [];
         for (let i = 5; i >= 0; i--) {
@@ -235,6 +244,8 @@ router.get('/clients/:id', (req, res) => {
                 totalProducts: products.count,
                 totalCustomers: customers.count,
                 totalEmployees: employees.count,
+                pendingOrders: pendingOrders.count,
+                monthlyRevenue: monthlyRevenueData.revenue || 0,
             },
             revenueByMonth,
             ordersByStatus,
@@ -703,7 +714,7 @@ router.post('/announcements', (req, res) => {
         db.prepare(`
       INSERT INTO announcements (id, author_id, title, message, target_tiers, is_active, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(announcementId, req.user.id, title, message, target_tiers ? JSON.stringify(target_tiers) : null, 1, now);
+    `).run(announcementId, req.user.id, title, message, target_tiers || null, 1, now);
         const announcement = db.prepare('SELECT * FROM announcements WHERE id = ?').get(announcementId);
         res.status(201).json(announcement);
     }

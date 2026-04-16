@@ -186,7 +186,7 @@ export default function Onboarding() {
         <StatCard
           label="Fully Completed"
           value={fullyCompleted}
-          subtext={`${((fullyCompleted / totalInOnboarding) * 100).toFixed(0)}% of pipeline`}
+          subtext={`${totalInOnboarding > 0 ? ((fullyCompleted / totalInOnboarding) * 100).toFixed(0) : 0}% of pipeline`}
           loading={loading}
         />
       </div>

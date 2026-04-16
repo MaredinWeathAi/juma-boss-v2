@@ -432,7 +432,7 @@ export function seedDatabase() {
     db.prepare(`
     INSERT INTO announcements (id, author_id, title, message, target_tiers, is_active, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(uuidv4(), adminId, 'New Analytics Dashboard Available', 'Check out our new advanced analytics dashboard for better insights into your business.', JSON.stringify(['pro', 'enterprise']), 1, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString());
+  `).run(uuidv4(), adminId, 'New Analytics Dashboard Available', 'Check out our new advanced analytics dashboard for better insights into your business.', 'pro,enterprise', 1, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString());
     console.log('Database seeded successfully!');
 }
 // Run seed if this file is executed directly

@@ -214,6 +214,16 @@ router.get('/clients/:id', (req: AuthRequest, res: any) => {
     const products = db.prepare('SELECT COUNT(*) as count FROM products WHERE bakery_id = ?').get(bakery.id) as any;
     const customers = db.prepare('SELECT COUNT(*) as count FROM customers WHERE bakery_id = ?').get(bakery.id) as any;
     const employees = db.prepare('SELECT COUNT(*) as count FROM employees WHERE bakery_id = ?').get(bakery.id) as any;
+    const pendingOrders = db.prepare("SELECT COUNT(*) as count FROM orders WHERE bakery_id = ? AND status = 'pending'").get(bakery.id) as any;
+
+    // Monthly revenue (current month)
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const monthlyRevenueData = db.prepare(`
+      SELECT COALESCE(SUM(total), 0) as revenue
+      FROM orders
+      WHERE bakery_id = ? AND strftime('%Y-%m', created_at) = ?
+    `).get(bakery.id, currentMonthStr) as any;
 
     // Revenue by month (last 6 months)
     const revenueByMonth: any[] = [];
@@ -278,6 +288,8 @@ router.get('/clients/:id', (req: AuthRequest, res: any) => {
         totalProducts: products.count,
         totalCustomers: customers.count,
         totalEmployees: employees.count,
+        pendingOrders: pendingOrders.count,
+        monthlyRevenue: monthlyRevenueData.revenue || 0,
       },
       revenueByMonth,
       ordersByStatus,
@@ -852,7 +864,7 @@ router.post('/announcements', (req: AuthRequest, res: any) => {
       req.user!.id,
       title,
       message,
-      target_tiers ? JSON.stringify(target_tiers) : null,
+      target_tiers || null,
       1,
       now
     );
