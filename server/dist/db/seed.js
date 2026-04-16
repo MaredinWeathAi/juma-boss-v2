@@ -12,6 +12,7 @@ export function seedDatabase() {
     DELETE FROM onboarding_steps;
     DELETE FROM notifications;
     DELETE FROM employees;
+    DELETE FROM recipe_items;
     DELETE FROM ingredients;
     DELETE FROM order_items;
     DELETE FROM orders;
@@ -528,6 +529,7 @@ export function seedDatabase() {
             { name: 'Cento de Salgados', category: 'kit', priceRange: [80, 160] },
             { name: 'Trufas (10un)', category: 'doce', priceRange: [20, 40] },
         ];
+        const createdProducts = [];
         for (let i = 0; i < baker.products; i++) {
             const productId = uuidv4();
             const product = productData[i % productData.length];
@@ -536,6 +538,7 @@ export function seedDatabase() {
         INSERT INTO products (id, bakery_id, name, description, category, price, cost, prep_time_minutes, is_active, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(productId, bakeryId, product.name, `${product.name} artesanal, feito com ingredientes selecionados`, product.category, price, Math.round(price * 0.35 * 100) / 100, Math.round(Math.random() * 120 + 15), 1, new Date(Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000).toISOString());
+            createdProducts.push({ id: productId, name: product.name, category: product.category, price });
         }
         // Create customers (Brazilian names)
         const customerNames = [
@@ -666,11 +669,87 @@ export function seedDatabase() {
                 { name: 'Leite Condensado', unit: 'lata', cost: 6.50 },
                 { name: 'Polvilho', unit: 'kg', cost: 9.00 },
             ];
+            const createdIngredientIds = [];
             for (const ingredient of ingredients) {
+                const ingredientId = uuidv4();
                 db.prepare(`
           INSERT INTO ingredients (id, bakery_id, name, unit, cost_per_unit, stock, min_stock, category, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(uuidv4(), bakeryId, ingredient.name, ingredient.unit, ingredient.cost, Math.random() * 100 + 50, 20, 'baking', now, now);
+        `).run(ingredientId, bakeryId, ingredient.name, ingredient.unit, ingredient.cost, Math.random() * 100 + 50, 20, 'baking', now, now);
+                createdIngredientIds.push({ id: ingredientId, name: ingredient.name, unit: ingredient.unit, cost: ingredient.cost });
+            }
+            // Create recipe_items — realistic ingredient assignments by product category
+            // Maps product category/name patterns to ingredient recipes
+            const recipeTemplates = {
+                'pão': [
+                    { ingredientName: 'Farinha de Trigo', qty: 0.5, batch: 10 },
+                    { ingredientName: 'Sal', qty: 0.02, batch: 10 },
+                    { ingredientName: 'Fermento em Pó', qty: 0.01, batch: 10 },
+                    { ingredientName: 'Manteiga', qty: 0.05, batch: 10 },
+                ],
+                'bolo': [
+                    { ingredientName: 'Farinha de Trigo', qty: 0.3, batch: 1 },
+                    { ingredientName: 'Açúcar Cristal', qty: 0.25, batch: 1 },
+                    { ingredientName: 'Ovos', qty: 0.5, batch: 1 },
+                    { ingredientName: 'Manteiga', qty: 0.15, batch: 1 },
+                    { ingredientName: 'Leite Integral', qty: 0.2, batch: 1 },
+                    { ingredientName: 'Essência de Baunilha', qty: 5, batch: 1 },
+                    { ingredientName: 'Fermento em Pó', qty: 0.015, batch: 1 },
+                ],
+                'doce': [
+                    { ingredientName: 'Leite Condensado', qty: 1, batch: 20 },
+                    { ingredientName: 'Chocolate em Pó', qty: 0.1, batch: 20 },
+                    { ingredientName: 'Manteiga', qty: 0.05, batch: 20 },
+                    { ingredientName: 'Creme de Leite', qty: 0.2, batch: 20 },
+                ],
+                'salgado': [
+                    { ingredientName: 'Farinha de Trigo', qty: 0.4, batch: 20 },
+                    { ingredientName: 'Ovos', qty: 0.3, batch: 20 },
+                    { ingredientName: 'Manteiga', qty: 0.1, batch: 20 },
+                    { ingredientName: 'Sal', qty: 0.02, batch: 20 },
+                    { ingredientName: 'Leite Integral', qty: 0.15, batch: 20 },
+                ],
+                'torta': [
+                    { ingredientName: 'Farinha de Trigo', qty: 0.35, batch: 1 },
+                    { ingredientName: 'Manteiga', qty: 0.2, batch: 1 },
+                    { ingredientName: 'Ovos', qty: 0.4, batch: 1 },
+                    { ingredientName: 'Creme de Leite', qty: 0.3, batch: 1 },
+                    { ingredientName: 'Açúcar Cristal', qty: 0.15, batch: 1 },
+                ],
+                'biscoito': [
+                    { ingredientName: 'Farinha de Trigo', qty: 0.4, batch: 30 },
+                    { ingredientName: 'Manteiga', qty: 0.2, batch: 30 },
+                    { ingredientName: 'Açúcar Cristal', qty: 0.15, batch: 30 },
+                    { ingredientName: 'Ovos', qty: 0.25, batch: 30 },
+                ],
+                'folhado': [
+                    { ingredientName: 'Farinha de Trigo', qty: 0.3, batch: 10 },
+                    { ingredientName: 'Manteiga', qty: 0.25, batch: 10 },
+                    { ingredientName: 'Sal', qty: 0.01, batch: 10 },
+                    { ingredientName: 'Ovos', qty: 0.2, batch: 10 },
+                ],
+            };
+            // Build ingredient lookup by name
+            const ingredientByName = new Map(createdIngredientIds.map(ing => [ing.name, ing]));
+            // Assign recipes to ~70% of products (realistic — not every product has a recipe yet)
+            for (const product of createdProducts) {
+                if (Math.random() > 0.70)
+                    continue; // 30% chance of no recipe
+                const template = recipeTemplates[product.category];
+                if (!template)
+                    continue;
+                for (const recipeItem of template) {
+                    const ingredient = ingredientByName.get(recipeItem.ingredientName);
+                    if (!ingredient)
+                        continue;
+                    // Add slight randomness to quantities for realism
+                    const qtyVariation = 0.8 + Math.random() * 0.4; // 0.8x to 1.2x
+                    const adjustedQty = Math.round(recipeItem.qty * qtyVariation * 1000) / 1000;
+                    db.prepare(`
+            INSERT INTO recipe_items (id, product_id, ingredient_id, quantity_per_batch, batch_size, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(uuidv4(), product.id, ingredient.id, adjustedQty, recipeItem.batch, now);
+                }
             }
         }
         // Create employees (for starter+ tiers)

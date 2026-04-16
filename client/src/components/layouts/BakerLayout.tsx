@@ -16,6 +16,7 @@ import {
   ChefHat,
   Calculator,
   HelpCircle,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -42,33 +43,34 @@ const BakerLayout = ({ children }: { children: React.ReactNode }) => {
       ],
     },
     {
-      title: 'Operations',
+      title: 'Operações',
       items: [
-        { label: 'Orders', path: '/app/orders', icon: <ShoppingCart size={20} /> },
-        { label: 'Producao', path: '/app/production', icon: <ChefHat size={20} /> },
-        { label: 'Products', path: '/app/products', icon: <Package size={20} /> },
-        { label: 'Customers', path: '/app/customers', icon: <Users size={20} /> },
+        { label: 'Pedidos', path: '/app/orders', icon: <ShoppingCart size={20} /> },
+        { label: 'Produção', path: '/app/production', icon: <ChefHat size={20} /> },
+        { label: 'Produtos', path: '/app/products', icon: <Package size={20} /> },
+        { label: 'Clientes', path: '/app/customers', icon: <Users size={20} /> },
       ],
     },
     {
-      title: 'Management',
+      title: 'Gestão',
       items: [
-        { label: 'Inventory', path: '/app/inventory', icon: <Boxes size={20} /> },
+        { label: 'Estoque', path: '/app/inventory', icon: <Boxes size={20} /> },
         { label: 'Custo de Receitas', path: '/app/recipe-costing', icon: <Calculator size={20} /> },
-        { label: 'Payments', path: '/app/payments', icon: <CreditCard size={20} /> },
+        { label: 'Pagamentos', path: '/app/payments', icon: <CreditCard size={20} /> },
       ],
     },
     {
       title: 'Insights',
       items: [
-        { label: 'Reports', path: '/app/reports', icon: <BarChart3 size={20} /> },
+        { label: 'Rentabilidade', path: '/app/profitability', icon: <TrendingUp size={20} /> },
+        { label: 'Relatórios', path: '/app/reports', icon: <BarChart3 size={20} /> },
       ],
     },
     {
-      title: 'System',
+      title: 'Sistema',
       items: [
         { label: 'Assinatura', path: '/app/subscription', icon: <CreditCard size={20} /> },
-        { label: 'Settings', path: '/app/settings', icon: <Settings size={20} /> },
+        { label: 'Configurações', path: '/app/settings', icon: <Settings size={20} /> },
       ],
     },
   ];

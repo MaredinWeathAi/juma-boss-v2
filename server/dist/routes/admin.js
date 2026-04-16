@@ -1086,5 +1086,123 @@ router.post('/financial-reports/export', (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+// GET /admin/cost-intelligence - Aggregated cost/margin data across all bakeries
+router.get('/cost-intelligence', (req, res) => {
+    try {
+        // Get all bakeries with their product/recipe data
+        const bakeries = db.prepare('SELECT id, name FROM bakeries').all();
+        let allProducts = [];
+        const bakeryData = [];
+        for (const bakery of bakeries) {
+            const products = db.prepare('SELECT * FROM products WHERE bakery_id = ?').all(bakery.id);
+            let bakeryRevenue = 0;
+            let bakeryCOGS = 0;
+            let productsWithRecipe = 0;
+            const margins = [];
+            for (const product of products) {
+                const recipeItems = db.prepare(`
+          SELECT ri.*, i.cost_per_unit
+          FROM recipe_items ri
+          JOIN ingredients i ON ri.ingredient_id = i.id
+          WHERE ri.product_id = ?
+        `).all(product.id);
+                let ingredientCost = 0;
+                recipeItems.forEach((item) => {
+                    ingredientCost += (item.quantity_per_batch * item.cost_per_unit) / item.batch_size;
+                });
+                const hasRecipe = recipeItems.length > 0;
+                if (hasRecipe)
+                    productsWithRecipe++;
+                const effectiveCost = hasRecipe ? ingredientCost : product.cost;
+                const margin = product.price > 0 ? ((product.price - effectiveCost) / product.price) * 100 : 0;
+                margins.push(margin);
+                const sales = db.prepare(`
+          SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0) as revenue,
+                 COALESCE(SUM(oi.quantity), 0) as quantity
+          FROM order_items oi
+          JOIN orders o ON oi.order_id = o.id
+          WHERE o.bakery_id = ? AND oi.product_id = ?
+        `).get(bakery.id, product.id);
+                bakeryRevenue += sales.revenue;
+                bakeryCOGS += sales.quantity * effectiveCost;
+                allProducts.push({
+                    bakeryId: bakery.id,
+                    bakeryName: bakery.name,
+                    productName: product.name,
+                    category: product.category,
+                    price: product.price,
+                    effectiveCost,
+                    margin,
+                    hasRecipe,
+                    revenue: sales.revenue,
+                    quantitySold: sales.quantity,
+                });
+            }
+            const avgMargin = margins.length > 0 ? margins.reduce((a, b) => a + b, 0) / margins.length : 0;
+            bakeryData.push({
+                id: bakery.id,
+                name: bakery.name,
+                totalProducts: products.length,
+                productsWithRecipe,
+                avgMargin,
+                revenue: bakeryRevenue,
+                cogs: bakeryCOGS,
+                grossProfit: bakeryRevenue - bakeryCOGS,
+                grossMargin: bakeryRevenue > 0 ? ((bakeryRevenue - bakeryCOGS) / bakeryRevenue) * 100 : 0,
+            });
+        }
+        // Category benchmarks across all bakeries
+        const categoryMap = new Map();
+        allProducts.forEach(p => {
+            const cat = p.category || 'outros';
+            if (!categoryMap.has(cat)) {
+                categoryMap.set(cat, { margins: [], prices: [], costs: [], count: 0 });
+            }
+            const c = categoryMap.get(cat);
+            c.margins.push(p.margin);
+            c.prices.push(p.price);
+            c.costs.push(p.effectiveCost);
+            c.count++;
+        });
+        const categoryBenchmarks = Array.from(categoryMap.entries()).map(([category, data]) => ({
+            category,
+            count: data.count,
+            avgMargin: data.margins.reduce((a, b) => a + b, 0) / data.margins.length,
+            avgPrice: data.prices.reduce((a, b) => a + b, 0) / data.prices.length,
+            avgCost: data.costs.reduce((a, b) => a + b, 0) / data.costs.length,
+            minMargin: Math.min(...data.margins),
+            maxMargin: Math.max(...data.margins),
+        })).sort((a, b) => b.count - a.count);
+        // Platform-wide aggregates
+        const totalRevenue = bakeryData.reduce((sum, b) => sum + b.revenue, 0);
+        const totalCOGS = bakeryData.reduce((sum, b) => sum + b.cogs, 0);
+        const totalProducts = allProducts.length;
+        const totalWithRecipe = allProducts.filter(p => p.hasRecipe).length;
+        const platformAvgMargin = allProducts.length > 0
+            ? allProducts.reduce((sum, p) => sum + p.margin, 0) / allProducts.length
+            : 0;
+        // Bakeries sorted by margin (best to worst)
+        const bakeryRanking = [...bakeryData].sort((a, b) => b.grossMargin - a.grossMargin);
+        res.json({
+            platform: {
+                totalRevenue,
+                totalCOGS,
+                grossProfit: totalRevenue - totalCOGS,
+                platformMargin: totalRevenue > 0 ? ((totalRevenue - totalCOGS) / totalRevenue) * 100 : 0,
+                avgMargin: platformAvgMargin,
+                totalProducts,
+                totalWithRecipe,
+                recipeAdoption: totalProducts > 0 ? (totalWithRecipe / totalProducts) * 100 : 0,
+                totalBakeries: bakeries.length,
+            },
+            bakeryRanking,
+            categoryBenchmarks,
+        });
+    }
+    catch (err) {
+        console.error('Cost intelligence error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 export default router;
 //# sourceMappingURL=admin.js.map

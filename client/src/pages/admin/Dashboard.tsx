@@ -262,17 +262,21 @@ export default function Dashboard() {
     return () => clearInterval(timer);
   }, []);
 
+  const [costIntel, setCostIntel] = useState<any>(null);
+
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
         setError(null);
-        const [dashResponse, subResponse] = await Promise.all([
+        const [dashResponse, subResponse, costResponse] = await Promise.all([
           api.get('/admin/dashboard'),
           api.get('/admin/subscriptions/overview'),
+          api.get('/admin/cost-intelligence').catch(() => null),
         ]);
         setData(dashResponse);
         setSubData(subResponse);
+        if (costResponse) setCostIntel(costResponse);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : 'Failed to load dashboard data'
@@ -651,6 +655,113 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Cost Intelligence */}
+        {costIntel && (
+          <div className="card lg:col-span-3 animate-fade-in">
+            <div className="mb-6">
+              <h2 className="text-lg font-bold text-white">Cost Intelligence</h2>
+              <p className="text-sm text-surface-400 mt-1">
+                Platform-wide margins, costs, and recipe adoption
+              </p>
+            </div>
+
+            {/* Platform KPIs */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-surface-800/50 rounded-lg p-3">
+                <p className="text-xs text-surface-500">Platform Avg Margin</p>
+                <p className={`text-xl font-bold ${
+                  costIntel.platform.avgMargin >= 40 ? 'text-emerald-400' :
+                  costIntel.platform.avgMargin >= 20 ? 'text-yellow-400' : 'text-red-400'
+                }`}>
+                  {costIntel.platform.avgMargin.toFixed(1)}%
+                </p>
+              </div>
+              <div className="bg-surface-800/50 rounded-lg p-3">
+                <p className="text-xs text-surface-500">Total Revenue (Products)</p>
+                <p className="text-xl font-bold text-white">{formatBRL(costIntel.platform.totalRevenue)}</p>
+              </div>
+              <div className="bg-surface-800/50 rounded-lg p-3">
+                <p className="text-xs text-surface-500">Gross Profit</p>
+                <p className="text-xl font-bold text-emerald-400">{formatBRL(costIntel.platform.grossProfit)}</p>
+              </div>
+              <div className="bg-surface-800/50 rounded-lg p-3">
+                <p className="text-xs text-surface-500">Recipe Adoption</p>
+                <p className="text-xl font-bold text-blue-400">
+                  {costIntel.platform.recipeAdoption.toFixed(0)}%
+                </p>
+                <p className="text-[10px] text-surface-600">
+                  {costIntel.platform.totalWithRecipe}/{costIntel.platform.totalProducts} products
+                </p>
+              </div>
+            </div>
+
+            {/* Bakery Ranking by Margin */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-sm font-semibold text-surface-300 mb-3">Bakery Margin Ranking</h3>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {costIntel.bakeryRanking.map((bakery: any, i: number) => (
+                    <div key={bakery.id} className="flex items-center justify-between py-2 px-3 bg-surface-800/30 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-surface-600 w-5">{i + 1}.</span>
+                        <div>
+                          <p className="text-sm text-white">{bakery.name}</p>
+                          <p className="text-[10px] text-surface-500">{bakery.productsWithRecipe}/{bakery.totalProducts} recipes</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className={`text-sm font-semibold ${
+                          bakery.grossMargin >= 40 ? 'text-emerald-400' :
+                          bakery.grossMargin >= 20 ? 'text-yellow-400' : 'text-red-400'
+                        }`}>
+                          {bakery.grossMargin.toFixed(1)}%
+                        </span>
+                        <p className="text-[10px] text-surface-500">{formatBRL(bakery.grossProfit)} profit</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-surface-300 mb-3">Category Benchmarks</h3>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {costIntel.categoryBenchmarks.map((cat: any) => (
+                    <div key={cat.category} className="flex items-center justify-between py-2 px-3 bg-surface-800/30 rounded-lg">
+                      <div>
+                        <p className="text-sm text-white capitalize">{cat.category}</p>
+                        <p className="text-[10px] text-surface-500">{cat.count} products · Avg {formatBRL(cat.avgPrice)}</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-2">
+                          <div className="w-12 h-1.5 bg-surface-700 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${
+                                cat.avgMargin >= 40 ? 'bg-emerald-500' :
+                                cat.avgMargin >= 20 ? 'bg-yellow-500' : 'bg-red-500'
+                              }`}
+                              style={{ width: `${Math.min(cat.avgMargin, 100)}%` }}
+                            />
+                          </div>
+                          <span className={`text-sm font-semibold ${
+                            cat.avgMargin >= 40 ? 'text-emerald-400' :
+                            cat.avgMargin >= 20 ? 'text-yellow-400' : 'text-red-400'
+                          }`}>
+                            {cat.avgMargin.toFixed(1)}%
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-surface-500">
+                          {cat.minMargin.toFixed(0)}%–{cat.maxMargin.toFixed(0)}% range
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Recent Activity */}
         <div className="card lg:col-span-3 animate-fade-in">

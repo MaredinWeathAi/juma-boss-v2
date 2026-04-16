@@ -1609,4 +1609,150 @@ router.get('/reports/velocity', (req: AuthRequest, res: any) => {
   }
 });
 
+// GET /baker/profitability - Comprehensive profitability dashboard data
+router.get('/profitability', (req: AuthRequest, res: any) => {
+  try {
+    const bakeryId = getBakeryId(req.user!.id);
+
+    // Get all products with recipe costs
+    const products = db.prepare('SELECT * FROM products WHERE bakery_id = ?').all(bakeryId) as any[];
+
+    const productData = products.map((product: any) => {
+      // Get recipe items for cost calculation
+      const recipeItems = db.prepare(`
+        SELECT ri.*, i.name as ingredient_name, i.unit, i.cost_per_unit
+        FROM recipe_items ri
+        JOIN ingredients i ON ri.ingredient_id = i.id
+        WHERE ri.product_id = ?
+      `).all(product.id) as any[];
+
+      let ingredientCost = 0;
+      recipeItems.forEach((item: any) => {
+        item.cost = (item.quantity_per_batch * item.cost_per_unit) / item.batch_size;
+        ingredientCost += item.cost;
+      });
+
+      const effectiveCost = recipeItems.length > 0 ? ingredientCost : product.cost;
+      const margin = product.price > 0 ? ((product.price - effectiveCost) / product.price) * 100 : 0;
+      const profit = product.price - effectiveCost;
+
+      // Get total revenue and quantity sold
+      const sales = db.prepare(`
+        SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0) as revenue,
+               COALESCE(SUM(oi.quantity), 0) as quantity_sold
+        FROM order_items oi
+        JOIN orders o ON oi.order_id = o.id
+        WHERE o.bakery_id = ? AND oi.product_id = ?
+      `).get(bakeryId, product.id) as any;
+
+      // Monthly revenue (last 6 months)
+      const monthlyRevenue = db.prepare(`
+        SELECT strftime('%Y-%m', o.created_at) as month,
+               COALESCE(SUM(oi.quantity * oi.unit_price), 0) as revenue,
+               COALESCE(SUM(oi.quantity), 0) as quantity
+        FROM order_items oi
+        JOIN orders o ON oi.order_id = o.id
+        WHERE o.bakery_id = ? AND oi.product_id = ? AND o.created_at >= date('now', '-6 months')
+        GROUP BY month
+        ORDER BY month
+      `).all(bakeryId, product.id) as any[];
+
+      const totalCOGS = sales.quantity_sold * effectiveCost;
+      const grossProfit = sales.revenue - totalCOGS;
+
+      return {
+        id: product.id,
+        name: product.name,
+        category: product.category,
+        price: product.price,
+        effectiveCost,
+        margin,
+        profit,
+        hasRecipe: recipeItems.length > 0,
+        revenue: sales.revenue,
+        quantitySold: sales.quantity_sold,
+        totalCOGS,
+        grossProfit,
+        monthlyRevenue,
+      };
+    });
+
+    // Category-level aggregation
+    const categoryMap = new Map<string, any>();
+    productData.forEach((p: any) => {
+      const cat = p.category || 'outros';
+      if (!categoryMap.has(cat)) {
+        categoryMap.set(cat, {
+          category: cat,
+          productCount: 0,
+          totalRevenue: 0,
+          totalCOGS: 0,
+          totalGrossProfit: 0,
+          totalQuantity: 0,
+          margins: [],
+        });
+      }
+      const c = categoryMap.get(cat)!;
+      c.productCount++;
+      c.totalRevenue += p.revenue;
+      c.totalCOGS += p.totalCOGS;
+      c.totalGrossProfit += p.grossProfit;
+      c.totalQuantity += p.quantitySold;
+      c.margins.push(p.margin);
+    });
+
+    const categories = Array.from(categoryMap.values()).map(c => ({
+      ...c,
+      avgMargin: c.margins.length > 0 ? c.margins.reduce((a: number, b: number) => a + b, 0) / c.margins.length : 0,
+      margins: undefined,
+    }));
+
+    // Monthly trends (last 6 months)
+    const monthlyTrends = db.prepare(`
+      SELECT strftime('%Y-%m', o.created_at) as month,
+             COALESCE(SUM(o.total), 0) as revenue,
+             COUNT(DISTINCT o.id) as order_count
+      FROM orders o
+      WHERE o.bakery_id = ? AND o.created_at >= date('now', '-6 months')
+      GROUP BY month
+      ORDER BY month
+    `).all(bakeryId) as any[];
+
+    // Overall summary
+    const totalRevenue = productData.reduce((sum: number, p: any) => sum + p.revenue, 0);
+    const totalCOGS = productData.reduce((sum: number, p: any) => sum + p.totalCOGS, 0);
+    const overallGrossProfit = totalRevenue - totalCOGS;
+    const overallMargin = totalRevenue > 0 ? (overallGrossProfit / totalRevenue) * 100 : 0;
+
+    // Top/bottom performers
+    const sortedByProfit = [...productData].filter((p: any) => p.revenue > 0).sort((a: any, b: any) => b.grossProfit - a.grossProfit);
+    const topProducts = sortedByProfit.slice(0, 5);
+    const bottomProducts = sortedByProfit.slice(-5).reverse();
+
+    // Lowest margin products (with sales)
+    const sortedByMargin = [...productData].filter((p: any) => p.revenue > 0).sort((a: any, b: any) => a.margin - b.margin);
+    const lowestMarginProducts = sortedByMargin.slice(0, 5);
+
+    res.json({
+      summary: {
+        totalRevenue,
+        totalCOGS,
+        grossProfit: overallGrossProfit,
+        overallMargin,
+        totalProducts: products.length,
+        productsWithRecipes: productData.filter((p: any) => p.hasRecipe).length,
+      },
+      products: productData,
+      categories,
+      monthlyTrends,
+      topProducts,
+      bottomProducts,
+      lowestMarginProducts,
+    });
+  } catch (err: any) {
+    console.error('Profitability error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
