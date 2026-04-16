@@ -340,7 +340,7 @@ router.post('/clients', (req: AuthRequest, res: any) => {
       `).run(bakeryId, userId, resolvedBakeryName, slug, phone || null, tier, 'active', now, now);
 
       const subscriptionId = uuidv4();
-      const tierPrices: any = { free: 0, starter: 149, pro: 399, enterprise: 999 };
+      const tierPrices: any = { free: 0, starter: 15, pro: 29, enterprise: 49 };
       const monthlyPrice = tierPrices[tier] || 0;
 
       db.prepare(`
@@ -446,7 +446,7 @@ router.put('/clients/:id', (req: AuthRequest, res: any) => {
       }
 
       if (tier) {
-        const tierPrices: any = { free: 0, starter: 149, pro: 399, enterprise: 999 };
+        const tierPrices: any = { free: 0, starter: 15, pro: 29, enterprise: 49 };
         const monthlyPrice = tierPrices[tier] || 0;
         db.prepare(
           'UPDATE subscriptions SET tier = ?, monthly_price = ? WHERE bakery_id = ?'
@@ -787,7 +787,7 @@ router.put('/subscriptions/:id', (req: AuthRequest, res: any) => {
       return res.status(404).json({ error: 'Subscription not found' });
     }
 
-    const tierPrices: any = { free: 0, starter: 29, pro: 79, enterprise: 199 };
+    const tierPrices: any = { free: 0, starter: 15, pro: 29, enterprise: 49 };
     const monthlyPrice = tierPrices[tier] || subscription.monthly_price;
     const now = new Date().toISOString();
 
@@ -1016,9 +1016,9 @@ router.get('/settings', (req: AuthRequest, res: any) => {
   try {
     const tierPrices = {
       free: 0,
-      starter: 149,
-      pro: 399,
-      enterprise: 999,
+      starter: 15,
+      pro: 29,
+      enterprise: 49,
     };
 
     const features = db.prepare('SELECT * FROM features ORDER BY tier_required, category').all() as any[];

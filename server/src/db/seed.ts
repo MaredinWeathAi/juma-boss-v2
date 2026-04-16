@@ -194,8 +194,8 @@ export function seedDatabase(): void {
       id: 'plan-starter',
       name: 'Iniciante',
       slug: 'starter',
-      monthlyPrice: 149,
-      annualPrice: 1521,
+      monthlyPrice: 15,
+      annualPrice: 153,
       maxProducts: 50,
       maxCustomers: 100,
       maxOrdersPerMonth: 500,
@@ -212,8 +212,8 @@ export function seedDatabase(): void {
       id: 'plan-pro',
       name: 'Profissional',
       slug: 'pro',
-      monthlyPrice: 399,
-      annualPrice: 4070,
+      monthlyPrice: 29,
+      annualPrice: 296,
       maxProducts: 200,
       maxCustomers: 500,
       maxOrdersPerMonth: 2000,
@@ -231,8 +231,8 @@ export function seedDatabase(): void {
       id: 'plan-enterprise',
       name: 'Empresa',
       slug: 'enterprise',
-      monthlyPrice: 999,
-      annualPrice: 10190,
+      monthlyPrice: 49,
+      annualPrice: 500,
       maxProducts: null,
       maxCustomers: null,
       maxOrdersPerMonth: null,
@@ -325,7 +325,7 @@ export function seedDatabase(): void {
     },
   ];
 
-  const tierPrices: any = { free: 0, starter: 149, pro: 399, enterprise: 999 };
+  const tierPrices: any = { free: 0, starter: 15, pro: 29, enterprise: 49 };
   const bakerPassword = bcryptjs.hashSync('demo123', 10);
 
   for (const baker of bakers) {
