@@ -31,9 +31,13 @@ interface OnboardingData {
 
 const stepLabels: Record<string, string> = {
   profile_setup: 'Profile Setup',
+  add_products: 'Add Products',
   first_product: 'First Product',
+  add_customers: 'Add Customers',
   first_customer: 'First Customer',
+  create_first_order: 'First Order',
   first_order: 'First Order',
+  team_setup: 'Team Setup',
   payment_setup: 'Payment Setup',
 };
 

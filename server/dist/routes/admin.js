@@ -262,8 +262,9 @@ router.get('/clients/:id', (req, res) => {
 // POST /admin/clients
 router.post('/clients', (req, res) => {
     try {
-        const { name, email, password, bakeryName, tier, phone } = req.body;
-        if (!name || !email || !password || !bakeryName || !tier) {
+        const { name, email, password, bakeryName, bakery_name, tier, phone } = req.body;
+        const resolvedBakeryName = bakeryName || bakery_name;
+        if (!name || !email || !password || !resolvedBakeryName || !tier) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
         const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
@@ -279,14 +280,14 @@ router.post('/clients', (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(userId, email, hashedPassword, name, 'baker', phone || null, now);
             const bakeryId = uuidv4();
-            const slug = bakeryName
+            const slug = resolvedBakeryName
                 .toLowerCase()
                 .replace(/\s+/g, '-')
                 .replace(/[^a-z0-9-]/g, '');
             db.prepare(`
         INSERT INTO bakeries (id, owner_id, name, slug, phone, tier, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(bakeryId, userId, bakeryName, slug, phone || null, tier, 'active', now, now);
+      `).run(bakeryId, userId, resolvedBakeryName, slug, phone || null, tier, 'active', now, now);
             const subscriptionId = uuidv4();
             const tierPrices = { free: 0, starter: 29, pro: 79, enterprise: 199 };
             const monthlyPrice = tierPrices[tier] || 0;
@@ -635,25 +636,29 @@ router.get('/onboarding', (req, res) => {
     try {
         const bakeries = db.prepare(`
       SELECT
-        b.id, b.name, b.slug, b.created_at,
+        b.id, b.name, b.slug, b.tier, b.created_at,
+        u.name as owner_name,
         COUNT(os.id) as total_steps,
         COUNT(CASE WHEN os.completed = 1 THEN 1 END) as completed_steps
       FROM bakeries b
+      LEFT JOIN users u ON b.owner_id = u.id
       LEFT JOIN onboarding_steps os ON b.id = os.bakery_id
       GROUP BY b.id
       ORDER BY b.created_at DESC
     `).all();
-        const detailed = bakeries.map((b) => ({
+        const pipeline = bakeries.map((b) => ({
             bakery_id: b.id,
             bakery_name: b.name,
+            owner_name: b.owner_name || b.name,
+            tier: b.tier,
             slug: b.slug,
             created_at: b.created_at,
-            completion_percent: b.total_steps > 0 ? Math.round((b.completed_steps / b.total_steps) * 100) : 0,
+            completion_pct: b.total_steps > 0 ? Math.round((b.completed_steps / b.total_steps) * 100) : 0,
             steps: db
                 .prepare('SELECT step, completed, completed_at FROM onboarding_steps WHERE bakery_id = ?')
                 .all(b.id),
         }));
-        res.json({ bakeries: detailed });
+        res.json({ pipeline });
     }
     catch (err) {
         console.error('Get onboarding error:', err);
