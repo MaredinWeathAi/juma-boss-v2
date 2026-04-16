@@ -727,6 +727,54 @@ router.get('/subscriptions', (req: AuthRequest, res: any) => {
   }
 });
 
+// GET /admin/subscriptions/overview (MUST be before /:id routes)
+router.get('/subscriptions/overview', (req: AuthRequest, res: any) => {
+  try {
+    const active = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'").get() as any;
+    const trialing = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'trialing'").get() as any;
+    const past_due = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'past_due'").get() as any;
+    const cancelled = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'cancelled'").get() as any;
+
+    const mrr = db.prepare(
+      "SELECT SUM(monthly_price) as total FROM subscriptions WHERE status = 'active'"
+    ).get() as any;
+
+    const failedPayments = db.prepare(
+      "SELECT COUNT(*) as count FROM billing_history WHERE status = 'failed'"
+    ).get() as any;
+
+    const sevenDaysFromNow = new Date();
+    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+    const upcomingRenewals = db.prepare(`
+      SELECT
+        s.id, s.tier, s.monthly_price,
+        b.name as bakery_name,
+        u.name as owner_name,
+        s.current_period_end
+      FROM subscriptions s
+      JOIN bakeries b ON s.bakery_id = b.id
+      JOIN users u ON b.owner_id = u.id
+      WHERE s.status = 'active'
+        AND s.current_period_end BETWEEN datetime('now') AND ?
+      ORDER BY s.current_period_end ASC
+      LIMIT 10
+    `).all(sevenDaysFromNow.toISOString()) as any[];
+
+    res.json({
+      active: active.count,
+      trialing: trialing.count,
+      past_due: past_due.count,
+      cancelled: cancelled.count,
+      mrr: mrr.total || 0,
+      failedPayments: failedPayments.count,
+      upcomingRenewals,
+    });
+  } catch (err: any) {
+    console.error('Subscriptions overview error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PUT /admin/subscriptions/:id
 router.put('/subscriptions/:id', (req: AuthRequest, res: any) => {
   try {
@@ -1036,54 +1084,6 @@ router.put('/settings', (req: AuthRequest, res: any) => {
     res.json({ message: 'Settings updated' });
   } catch (err: any) {
     console.error('Update settings error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /admin/subscriptions/overview
-router.get('/subscriptions/overview', (req: AuthRequest, res: any) => {
-  try {
-    const active = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'").get() as any;
-    const trialing = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'trialing'").get() as any;
-    const past_due = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'past_due'").get() as any;
-    const cancelled = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'cancelled'").get() as any;
-
-    const mrr = db.prepare(
-      "SELECT SUM(monthly_price) as total FROM subscriptions WHERE status = 'active'"
-    ).get() as any;
-
-    const failedPayments = db.prepare(
-      "SELECT COUNT(*) as count FROM billing_history WHERE status = 'failed'"
-    ).get() as any;
-
-    // Upcoming renewals (next 7 days)
-    const sevenDaysFromNow = new Date();
-    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
-    const upcomingRenewals = db.prepare(`
-      SELECT
-        s.id, s.tier, s.monthly_price,
-        b.name as bakery_name,
-        u.name as owner_name,
-        s.current_period_end
-      FROM subscriptions s
-      JOIN bakeries b ON s.bakery_id = b.id
-      JOIN users u ON b.owner_id = u.id
-      WHERE s.status = 'active'
-        AND s.current_period_end BETWEEN datetime('now') AND ?
-      ORDER BY s.current_period_end ASC
-      LIMIT 10
-    `).all(sevenDaysFromNow.toISOString()) as any[];
-
-    res.json({
-      active: active.count,
-      trialing: trialing.count,
-      past_due: past_due.count,
-      cancelled: cancelled.count,
-      failedPayments: failedPayments.count,
-      upcomingRenewals,
-    });
-  } catch (err: any) {
-    console.error('Subscriptions overview error:', err);
     res.status(500).json({ error: err.message });
   }
 });

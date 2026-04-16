@@ -51,6 +51,21 @@ export function initDB() {
             if (!columnExists('subscriptions', 'grace_period_end')) {
                 db.exec(`ALTER TABLE subscriptions ADD COLUMN grace_period_end TEXT;`);
             }
+            if (!columnExists('subscriptions', 'updated_at')) {
+                db.exec(`ALTER TABLE subscriptions ADD COLUMN updated_at TEXT;`);
+            }
+        }
+    }
+    catch {
+        // Table doesn't exist, will be created below
+    }
+    // Check if billing_history table exists and add missing columns
+    try {
+        const result = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='billing_history'").get();
+        if (result) {
+            if (!columnExists('billing_history', 'description')) {
+                db.exec(`ALTER TABLE billing_history ADD COLUMN description TEXT;`);
+            }
         }
     }
     catch {
@@ -108,6 +123,7 @@ export function initDB() {
       current_period_end TEXT,
       cancelled_at TEXT,
       created_at TEXT NOT NULL,
+      updated_at TEXT,
       billing_cycle TEXT CHECK(billing_cycle IN ('monthly', 'annual')) DEFAULT 'monthly',
       annual_discount_applied INT DEFAULT 0,
       next_billing_date TEXT,
@@ -152,8 +168,9 @@ export function initDB() {
       billing_period_end TEXT,
       payment_method TEXT CHECK(payment_method IN ('pix', 'credit_card', 'debit_card', 'boleto')),
       payment_reference TEXT,
-      status TEXT CHECK(status IN ('pending', 'paid', 'failed', 'refunded')) DEFAULT 'pending',
+      status TEXT CHECK(status IN ('pending', 'paid', 'failed', 'refunded', 'discount')) DEFAULT 'pending',
       invoice_number TEXT,
+      description TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (subscription_id) REFERENCES subscriptions(id),
       FOREIGN KEY (bakery_id) REFERENCES bakeries(id)
