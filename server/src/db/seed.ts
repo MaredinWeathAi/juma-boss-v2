@@ -7,7 +7,8 @@ const db = getDB();
 export function seedDatabase(): void {
   initDB();
 
-  // Clear existing data
+  // Clear existing data (disable FK checks to avoid ordering issues)
+  db.exec(`PRAGMA foreign_keys = OFF;`);
   db.exec(`
     DELETE FROM announcements;
     DELETE FROM audit_log;
@@ -27,6 +28,9 @@ export function seedDatabase(): void {
     DELETE FROM features;
     DELETE FROM subscription_plans;
   `);
+  // Also clean payments table
+  try { db.exec(`DELETE FROM payments;`); } catch (_) { /* table might not exist yet */ }
+  db.exec(`PRAGMA foreign_keys = ON;`);
 
   const now = new Date().toISOString();
 
@@ -267,78 +271,178 @@ export function seedDatabase(): void {
     );
   }
 
-  // Baker accounts with their data
+  // Baker accounts with their data — Brazilian names and bakeries
   const bakers = [
+    // FREE tier bakers (4)
     {
-      email: 'hobby1@jumaboss.com',
+      email: 'maria@jumaboss.com',
       name: 'Maria Santos',
-      bakeryName: "Maria's Home Bakes",
+      bakeryName: 'Doces da Maria',
       tier: 'free',
-      products: 3,
-      customers: 5,
-      ordersPerMonth: 8,
+      products: 5,
+      customers: 8,
+      ordersPerMonth: 12,
     },
     {
-      email: 'hobby2@jumaboss.com',
+      email: 'ana@jumaboss.com',
       name: 'Ana Costa',
-      bakeryName: 'Sweet Traditions',
+      bakeryName: 'Delícias Caseiras',
       tier: 'free',
       products: 4,
       customers: 6,
       ordersPerMonth: 10,
     },
     {
-      email: 'starter@jumaboss.com',
-      name: 'James Chen',
-      bakeryName: 'Golden Crust Bakery',
+      email: 'lucia@jumaboss.com',
+      name: 'Lúcia Ferreira',
+      bakeryName: 'Bolos da Lúcia',
+      tier: 'free',
+      products: 3,
+      customers: 5,
+      ordersPerMonth: 8,
+    },
+    {
+      email: 'pedro@jumaboss.com',
+      name: 'Pedro Almeida',
+      bakeryName: 'Pão do Pedro',
+      tier: 'free',
+      products: 6,
+      customers: 10,
+      ordersPerMonth: 15,
+    },
+
+    // STARTER tier bakers (5)
+    {
+      email: 'carlos@jumaboss.com',
+      name: 'Carlos Oliveira',
+      bakeryName: 'Padaria do Carlos',
+      tier: 'starter',
+      products: 15,
+      customers: 25,
+      ordersPerMonth: 45,
+    },
+    {
+      email: 'juliana@jumaboss.com',
+      name: 'Juliana Ribeiro',
+      bakeryName: 'Confeitaria Ribeiro',
       tier: 'starter',
       products: 12,
       customers: 20,
-      ordersPerMonth: 40,
-    },
-    {
-      email: 'starter2@jumaboss.com',
-      name: 'Sofia Rivera',
-      bakeryName: "Rivera's Artisan Bakes",
-      tier: 'starter',
-      products: 10,
-      customers: 18,
       ordersPerMonth: 35,
     },
     {
-      email: 'pro@jumaboss.com',
-      name: 'Sarah Johnson',
-      bakeryName: "Sarah's Sweet Creations",
-      tier: 'pro',
-      products: 20,
-      customers: 50,
-      ordersPerMonth: 80,
+      email: 'rafael@jumaboss.com',
+      name: 'Rafael Mendes',
+      bakeryName: 'Forno Quente',
+      tier: 'starter',
+      products: 18,
+      customers: 30,
+      ordersPerMonth: 50,
     },
     {
-      email: 'enterprise@jumaboss.com',
-      name: 'Robert Williams',
-      bakeryName: 'Williams Bakery Empire',
+      email: 'fernanda@jumaboss.com',
+      name: 'Fernanda Lima',
+      bakeryName: 'Doce Encanto',
+      tier: 'starter',
+      products: 10,
+      customers: 18,
+      ordersPerMonth: 30,
+    },
+    {
+      email: 'thiago@jumaboss.com',
+      name: 'Thiago Souza',
+      bakeryName: 'Pão & Cia',
+      tier: 'starter',
+      products: 14,
+      customers: 22,
+      ordersPerMonth: 40,
+    },
+
+    // PRO tier bakers (4)
+    {
+      email: 'patricia@jumaboss.com',
+      name: 'Patrícia Rodrigues',
+      bakeryName: 'Confeitaria Artesanal PR',
+      tier: 'pro',
+      products: 25,
+      customers: 60,
+      ordersPerMonth: 90,
+    },
+    {
+      email: 'marcelo@jumaboss.com',
+      name: 'Marcelo Barbosa',
+      bakeryName: 'Padaria Barbosa',
+      tier: 'pro',
+      products: 30,
+      customers: 80,
+      ordersPerMonth: 120,
+    },
+    {
+      email: 'camila@jumaboss.com',
+      name: 'Camila Araujo',
+      bakeryName: 'Pâtisserie Camila',
+      tier: 'pro',
+      products: 22,
+      customers: 55,
+      ordersPerMonth: 75,
+    },
+    {
+      email: 'roberto@jumaboss.com',
+      name: 'Roberto Nascimento',
+      bakeryName: 'Fornalha Padaria',
+      tier: 'pro',
+      products: 28,
+      customers: 70,
+      ordersPerMonth: 100,
+    },
+
+    // ENTERPRISE tier bakers (3)
+    {
+      email: 'regina@jumaboss.com',
+      name: 'Regina Carvalho',
+      bakeryName: 'Rede Carvalho Padarias',
+      tier: 'enterprise',
+      products: 40,
+      customers: 150,
+      ordersPerMonth: 200,
+    },
+    {
+      email: 'gustavo@jumaboss.com',
+      name: 'Gustavo Pereira',
+      bakeryName: 'Grupo Pereira Bakery',
       tier: 'enterprise',
       products: 35,
       customers: 120,
-      ordersPerMonth: 150,
+      ordersPerMonth: 180,
+    },
+    {
+      email: 'isabela@jumaboss.com',
+      name: 'Isabela Martins',
+      bakeryName: 'Império dos Pães',
+      tier: 'enterprise',
+      products: 45,
+      customers: 200,
+      ordersPerMonth: 250,
     },
   ];
 
   const tierPrices: any = { free: 0, starter: 15, pro: 29, enterprise: 49 };
   const bakerPassword = bcryptjs.hashSync('demo123', 10);
 
-  for (const baker of bakers) {
+  for (let bakerIndex = 0; bakerIndex < bakers.length; bakerIndex++) {
+    const baker = bakers[bakerIndex];
     const userId = uuidv4();
     const bakeryId = uuidv4();
     const subscriptionId = uuidv4();
     const paymentMethodId = uuidv4();
 
     // Create user
+    const phoneArea = ['11', '21', '31', '41', '51', '61', '71', '81', '85', '27'][bakerIndex % 10];
+    const phoneNum = `+55${phoneArea}9${Math.floor(Math.random() * 90000000 + 10000000)}`;
     db.prepare(`
       INSERT INTO users (id, email, password, name, role, phone, created_at, last_login_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(userId, baker.email, bakerPassword, baker.name, 'baker', '+1-555-0000', now, now);
+    `).run(userId, baker.email, bakerPassword, baker.name, 'baker', phoneNum, now, now);
 
     // Create bakery
     const slug = baker.bakeryName
@@ -349,7 +453,7 @@ export function seedDatabase(): void {
     db.prepare(`
       INSERT INTO bakeries (id, owner_id, name, slug, phone, tier, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(bakeryId, userId, baker.bakeryName, slug, '+1-555-0000', baker.tier, 'active', now, now);
+    `).run(bakeryId, userId, baker.bakeryName, slug, phoneNum, baker.tier, 'active', now, now);
 
     // Create payment method for the baker
     const paymentDetails = {
@@ -369,13 +473,18 @@ export function seedDatabase(): void {
       now
     );
 
-    // Calculate trial and billing dates
+    // Calculate subscription dates — stagger start dates for realism
+    const monthsAgo = Math.floor(Math.random() * 8) + 2; // started 2-10 months ago
     const startDate = new Date();
-    const trialDays = baker.tier !== 'free' ? 14 : 0;
-    const trialEndDate = new Date(startDate);
-    trialEndDate.setDate(trialEndDate.getDate() + trialDays);
-    const nextBillingDate = new Date(trialEndDate);
-    nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+    startDate.setMonth(startDate.getMonth() - monthsAgo);
+    const nextBillingDate = new Date();
+    nextBillingDate.setDate(nextBillingDate.getDate() + Math.floor(Math.random() * 25) + 3);
+
+    // Mix of active and trialing subscriptions
+    let subStatus = 'active';
+    if (baker.tier === 'free') subStatus = 'active';
+    else if (bakerIndex % 5 === 0) subStatus = 'trialing'; // ~20% trialing
+    else subStatus = 'active';
 
     // Create subscription with new fields
     db.prepare(`
@@ -385,47 +494,55 @@ export function seedDatabase(): void {
       subscriptionId,
       bakeryId,
       baker.tier,
-      baker.tier !== 'free' ? 'trialing' : 'active',
+      subStatus,
       tierPrices[baker.tier],
       startDate.toISOString(),
       nextBillingDate.toISOString(),
-      baker.tier !== 'free' ? trialEndDate.toISOString() : null,
+      subStatus === 'trialing' ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null,
       nextBillingDate.toISOString(),
       'monthly',
       baker.tier !== 'free' ? paymentMethodId : null,
       0,
-      now
+      startDate.toISOString()
     );
 
-    // Create billing history records for paid subscriptions
+    // Create billing history records for paid subscriptions (multiple months)
     if (baker.tier !== 'free') {
-      // Create a paid invoice for last month
-      const lastMonthStart = new Date();
-      lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
-      lastMonthStart.setDate(1);
-      const lastMonthEnd = new Date(lastMonthStart);
-      lastMonthEnd.setMonth(lastMonthEnd.getMonth() + 1);
-      lastMonthEnd.setDate(0);
+      const paymentMethodOptions = ['pix', 'credit_card', 'boleto'];
+      const chosenMethod = paymentMethodOptions[bakerIndex % paymentMethodOptions.length] as 'pix' | 'credit_card' | 'boleto';
 
-      const invoiceNumber = `JB-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
+      for (let m = monthsAgo; m >= 1; m--) {
+        const periodStart = new Date();
+        periodStart.setMonth(periodStart.getMonth() - m);
+        periodStart.setDate(1);
+        const periodEnd = new Date(periodStart);
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+        periodEnd.setDate(0);
 
-      db.prepare(`
-        INSERT INTO billing_history (id, subscription_id, bakery_id, amount, currency, billing_period_start, billing_period_end, payment_method, payment_reference, status, invoice_number, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        uuidv4(),
-        subscriptionId,
-        bakeryId,
-        tierPrices[baker.tier],
-        'BRL',
-        lastMonthStart.toISOString(),
-        lastMonthEnd.toISOString(),
-        'pix',
-        `PIX-${Math.floor(Math.random() * 1000000)}`,
-        'paid',
-        invoiceNumber,
-        new Date(lastMonthStart).toISOString()
-      );
+        const invoiceNumber = `JB-${periodStart.getFullYear()}-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
+
+        // Occasionally mark a payment as failed (for financial reports)
+        const isFailed = m === 2 && bakerIndex % 4 === 0;
+
+        db.prepare(`
+          INSERT INTO billing_history (id, subscription_id, bakery_id, amount, currency, billing_period_start, billing_period_end, payment_method, payment_reference, status, invoice_number, description, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          uuidv4(),
+          subscriptionId,
+          bakeryId,
+          tierPrices[baker.tier],
+          'BRL',
+          periodStart.toISOString(),
+          periodEnd.toISOString(),
+          chosenMethod,
+          chosenMethod === 'pix' ? `PIX-${Math.floor(Math.random() * 1000000)}` : `REF-${Math.floor(Math.random() * 1000000)}`,
+          isFailed ? 'failed' : 'paid',
+          invoiceNumber,
+          isFailed ? 'Payment failed - insufficient funds' : null,
+          new Date(periodStart).toISOString()
+        );
+      }
     }
 
     // Create onboarding steps
@@ -444,49 +561,59 @@ export function seedDatabase(): void {
       );
     }
 
-    // Create products
-    const productNames = [
-      'Chocolate Cake',
-      'Croissants',
-      'Sourdough Bread',
-      'Cupcakes',
-      'Brownies',
-      'Donuts',
-      'Cookies',
-      'Banana Bread',
-      'Cheesecake',
-      'Muffins',
-      'Bread Roll',
-      'Tart',
-      'Eclairs',
-      'Macaron',
-      'Biscotti',
-      'Cinnamon Roll',
-      'Focaccia',
-      'Tiramisu',
-      'Pain au Chocolat',
-      'Fruit Tart',
-      'Lemon Cake',
-      'Carrot Cake',
-      'Red Velvet Cake',
-      'Vanilla Cake',
-      'Strawberry Shortcake',
-      'Pumpkin Pie',
-      'Apple Pie',
-      'Pecan Pie',
-      'Key Lime Pie',
-      'Cherry Tart',
-      'Almond Croissant',
-      'Cheese Danish',
-      'Apple Danish',
-      'Chocolate Eclair',
-      'Pistachio Tart',
+    // Create products (Brazilian bakery items with R$ prices)
+    const productData = [
+      { name: 'Pão Francês', category: 'pão', priceRange: [0.80, 1.50] },
+      { name: 'Pão de Queijo', category: 'pão', priceRange: [3, 6] },
+      { name: 'Bolo de Chocolate', category: 'bolo', priceRange: [25, 55] },
+      { name: 'Bolo de Cenoura', category: 'bolo', priceRange: [20, 45] },
+      { name: 'Brigadeiro', category: 'doce', priceRange: [2, 5] },
+      { name: 'Coxinha', category: 'salgado', priceRange: [4, 8] },
+      { name: 'Empada', category: 'salgado', priceRange: [5, 10] },
+      { name: 'Croissant', category: 'folhado', priceRange: [6, 12] },
+      { name: 'Sonho', category: 'doce', priceRange: [5, 10] },
+      { name: 'Torta de Limão', category: 'torta', priceRange: [30, 65] },
+      { name: 'Bolo de Fubá', category: 'bolo', priceRange: [15, 35] },
+      { name: 'Rosca de Polvilho', category: 'biscoito', priceRange: [8, 18] },
+      { name: 'Cupcake', category: 'doce', priceRange: [6, 12] },
+      { name: 'Pão de Mel', category: 'doce', priceRange: [4, 8] },
+      { name: 'Torta Salgada', category: 'torta', priceRange: [25, 50] },
+      { name: 'Bolo Red Velvet', category: 'bolo', priceRange: [35, 70] },
+      { name: 'Focaccia', category: 'pão', priceRange: [12, 25] },
+      { name: 'Quiche Lorraine', category: 'torta', priceRange: [18, 35] },
+      { name: 'Bolo de Milho', category: 'bolo', priceRange: [15, 30] },
+      { name: 'Palmier', category: 'folhado', priceRange: [3, 7] },
+      { name: 'Bolo Prestígio', category: 'bolo', priceRange: [30, 60] },
+      { name: 'Pão Integral', category: 'pão', priceRange: [8, 16] },
+      { name: 'Esfiha', category: 'salgado', priceRange: [4, 8] },
+      { name: 'Carolina', category: 'doce', priceRange: [3, 6] },
+      { name: 'Bolo de Aniversário', category: 'bolo', priceRange: [50, 120] },
+      { name: 'Biscoito Amanteigado', category: 'biscoito', priceRange: [12, 25] },
+      { name: 'Pão de Batata', category: 'pão', priceRange: [4, 8] },
+      { name: 'Torta Holandesa', category: 'torta', priceRange: [35, 70] },
+      { name: 'Broa de Milho', category: 'pão', priceRange: [3, 7] },
+      { name: 'Pudim', category: 'doce', priceRange: [15, 30] },
+      { name: 'Bolo Formigueiro', category: 'bolo', priceRange: [18, 35] },
+      { name: 'Pastel de Nata', category: 'folhado', priceRange: [5, 10] },
+      { name: 'Enroladinho de Salsicha', category: 'salgado', priceRange: [3, 7] },
+      { name: 'Bolo Nega Maluca', category: 'bolo', priceRange: [25, 50] },
+      { name: 'Cheese Bread Ball (100g)', category: 'pão', priceRange: [5, 10] },
+      { name: 'Torta de Frango', category: 'torta', priceRange: [22, 45] },
+      { name: 'Mini Quiche (6un)', category: 'salgado', priceRange: [18, 35] },
+      { name: 'Bolo Vulcão', category: 'bolo', priceRange: [40, 80] },
+      { name: 'Pão Australiano', category: 'pão', priceRange: [10, 20] },
+      { name: 'Kit Festa (100 doces)', category: 'kit', priceRange: [150, 300] },
+      { name: 'Brownie', category: 'doce', priceRange: [6, 12] },
+      { name: 'Macaron (6un)', category: 'doce', priceRange: [25, 45] },
+      { name: 'Bolo Naked Cake', category: 'bolo', priceRange: [60, 130] },
+      { name: 'Cento de Salgados', category: 'kit', priceRange: [80, 160] },
+      { name: 'Trufas (10un)', category: 'doce', priceRange: [20, 40] },
     ];
 
     for (let i = 0; i < baker.products; i++) {
       const productId = uuidv4();
-      const productName = productNames[i % productNames.length];
-      const price = Math.round((Math.random() * 25 + 5) * 100) / 100; // $5-30
+      const product = productData[i % productData.length];
+      const price = Math.round((Math.random() * (product.priceRange[1] - product.priceRange[0]) + product.priceRange[0]) * 100) / 100;
 
       db.prepare(`
         INSERT INTO products (id, bakery_id, name, description, category, price, cost, prep_time_minutes, is_active, created_at)
@@ -494,39 +621,59 @@ export function seedDatabase(): void {
       `).run(
         productId,
         bakeryId,
-        productName,
-        `Fresh and delicious ${productName.toLowerCase()}`,
-        Math.random() > 0.5 ? 'cake' : 'pastry',
+        product.name,
+        `${product.name} artesanal, feito com ingredientes selecionados`,
+        product.category,
         price,
-        price * 0.4,
+        Math.round(price * 0.35 * 100) / 100,
         Math.round(Math.random() * 120 + 15),
         1,
         new Date(Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000).toISOString()
       );
     }
 
-    // Create customers
+    // Create customers (Brazilian names)
     const customerNames = [
-      'John Smith',
-      'Maria Garcia',
-      'Ahmed Hassan',
-      'Elena Volkov',
-      'Yuki Tanaka',
-      'Priya Patel',
-      'Juan Carlos',
-      'Sophie Dubois',
-      'Lisa Chen',
-      'Marcus Johnson',
-      'Anna Mueller',
-      'Diego Rodriguez',
-      'Isabella Rossi',
-      'Hiroshi Yamamoto',
-      'Emma Brown',
-      'Mateo Lopez',
-      'Leah Cohen',
-      'Ivan Petrov',
-      'Fatima Alibi',
-      'David Kim',
+      'João Silva',
+      'Maria Oliveira',
+      'José Santos',
+      'Ana Souza',
+      'Francisco Lima',
+      'Adriana Pereira',
+      'Antônio Costa',
+      'Juliana Rodrigues',
+      'Paulo Almeida',
+      'Fernanda Nascimento',
+      'Marcos Araújo',
+      'Beatriz Carvalho',
+      'Lucas Gomes',
+      'Patrícia Ribeiro',
+      'Ricardo Martins',
+      'Camila Barbosa',
+      'Eduardo Rocha',
+      'Letícia Dias',
+      'Gabriel Moreira',
+      'Larissa Vieira',
+      'Renato Melo',
+      'Daniela Teixeira',
+      'Felipe Cardoso',
+      'Vanessa Correia',
+      'Bruno Cavalcanti',
+      'Aline Monteiro',
+      'Diego Pinto',
+      'Priscila Duarte',
+      'Rodrigo Nunes',
+      'Tatiana Campos',
+      'André Batista',
+      'Natália Freitas',
+      'Vinícius Ramos',
+      'Cristiane Azevedo',
+      'Leandro Lopes',
+      'Mariana Castro',
+      'Gustavo Fernandes',
+      'Simone Gonçalves',
+      'Henrique Moura',
+      'Raquel Mendes',
     ];
 
     const createdCustomerIds: string[] = [];
@@ -535,6 +682,7 @@ export function seedDatabase(): void {
       createdCustomerIds.push(customerId);
       const customerName = customerNames[i % customerNames.length];
 
+      const custArea = ['11', '21', '31', '41', '51'][Math.floor(Math.random() * 5)];
       db.prepare(`
         INSERT INTO customers (id, bakery_id, name, email, phone, is_wholesale, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -542,10 +690,8 @@ export function seedDatabase(): void {
         customerId,
         bakeryId,
         customerName,
-        `${customerName.toLowerCase().replace(/\s/g, '.')}@email.com`,
-        `+1-555-${Math.floor(Math.random() * 10000)
-          .toString()
-          .padStart(4, '0')}`,
+        `${customerName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s/g, '.')}@email.com`,
+        `+55${custArea}9${Math.floor(Math.random() * 90000000 + 10000000)}`,
         Math.random() > 0.8 ? 1 : 0,
         new Date(Date.now() - Math.random() * 120 * 24 * 60 * 60 * 1000).toISOString()
       );
@@ -555,8 +701,9 @@ export function seedDatabase(): void {
     const products = db.prepare('SELECT id, price FROM products WHERE bakery_id = ?').all(bakeryId) as any[];
 
     for (let month = 11; month >= 0; month--) {
-      // More recent months have more orders
-      const ordersThisMonth = Math.ceil(baker.ordersPerMonth * (1 + month * 0.1));
+      // More recent months have more orders (growth trend)
+      const growthFactor = 0.5 + ((11 - month) / 11) * 0.8; // 0.5x oldest → 1.3x newest
+      const ordersThisMonth = Math.ceil(baker.ordersPerMonth * growthFactor);
 
       for (let i = 0; i < ordersThisMonth; i++) {
         const orderId = uuidv4();
@@ -648,14 +795,18 @@ export function seedDatabase(): void {
     // Create ingredients (for starter+ tiers)
     if (baker.tier !== 'free') {
       const ingredients = [
-        { name: 'Flour', unit: 'kg', cost: 1.5 },
-        { name: 'Sugar', unit: 'kg', cost: 2.0 },
-        { name: 'Butter', unit: 'kg', cost: 8.0 },
-        { name: 'Eggs', unit: 'dozen', cost: 4.5 },
-        { name: 'Milk', unit: 'liter', cost: 1.2 },
-        { name: 'Vanilla Extract', unit: 'ml', cost: 0.05 },
-        { name: 'Baking Powder', unit: 'kg', cost: 3.0 },
-        { name: 'Salt', unit: 'kg', cost: 0.5 },
+        { name: 'Farinha de Trigo', unit: 'kg', cost: 5.50 },
+        { name: 'Açúcar Cristal', unit: 'kg', cost: 4.80 },
+        { name: 'Manteiga', unit: 'kg', cost: 32.00 },
+        { name: 'Ovos', unit: 'dúzia', cost: 12.00 },
+        { name: 'Leite Integral', unit: 'litro', cost: 5.50 },
+        { name: 'Essência de Baunilha', unit: 'ml', cost: 0.15 },
+        { name: 'Fermento em Pó', unit: 'kg', cost: 18.00 },
+        { name: 'Sal', unit: 'kg', cost: 3.00 },
+        { name: 'Chocolate em Pó', unit: 'kg', cost: 25.00 },
+        { name: 'Creme de Leite', unit: 'litro', cost: 8.00 },
+        { name: 'Leite Condensado', unit: 'lata', cost: 6.50 },
+        { name: 'Polvilho', unit: 'kg', cost: 9.00 },
       ];
 
       for (const ingredient of ingredients) {
@@ -679,10 +830,11 @@ export function seedDatabase(): void {
 
     // Create employees (for starter+ tiers)
     if (baker.tier !== 'free') {
-      const employeeNames = ['Alice', 'Bob', 'Carol', 'David', 'Emma', 'Frank'];
+      const employeeNames = ['Joana', 'Marcos', 'Cláudia', 'Danilo', 'Elisa', 'Fábio', 'Gabriela', 'Hugo'];
       const employeeCount = baker.tier === 'starter' ? 2 : Math.floor(Math.random() * 5) + 3;
 
       for (let i = 0; i < employeeCount; i++) {
+        const empArea = ['11', '21', '31'][Math.floor(Math.random() * 3)];
         db.prepare(`
           INSERT INTO employees (id, bakery_id, name, email, phone, role, hourly_rate, is_active, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -690,10 +842,8 @@ export function seedDatabase(): void {
           uuidv4(),
           bakeryId,
           employeeNames[i % employeeNames.length],
-          `employee${i}@email.com`,
-          `+1-555-${Math.floor(Math.random() * 10000)
-            .toString()
-            .padStart(4, '0')}`,
+          `${employeeNames[i % employeeNames.length].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}${bakerIndex}@email.com`,
+          `+55${empArea}9${Math.floor(Math.random() * 90000000 + 10000000)}`,
           ['baker', 'decorator', 'manager'][Math.floor(Math.random() * 3)],
           Math.round((Math.random() * 8 + 12) * 100) / 100,
           1,

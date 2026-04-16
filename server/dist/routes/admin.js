@@ -20,15 +20,15 @@ router.get('/dashboard', (req, res) => {
         const firstOfMonth = new Date();
         firstOfMonth.setDate(1);
         const newBakersThisMonth = db.prepare(`SELECT COUNT(*) as count FROM bakeries WHERE created_at >= ? AND status = 'active'`).get(firstOfMonth.toISOString());
-        // MRR and ARR
-        const subscriptionsData = db.prepare(`SELECT SUM(monthly_price) as mrr FROM subscriptions WHERE status = 'active'`).get();
+        // MRR and ARR (include both active and trialing)
+        const subscriptionsData = db.prepare(`SELECT SUM(monthly_price) as mrr FROM subscriptions WHERE status IN ('active', 'trialing')`).get();
         const mrr = subscriptionsData.mrr || 0;
         const arr = mrr * 12;
         // Total orders and revenue across all bakeries
         const orderData = db.prepare(`SELECT COUNT(*) as totalOrders, SUM(total) as totalRevenue FROM orders`).get();
         // Total customers
         const customerData = db.prepare('SELECT COUNT(*) as count FROM customers').get();
-        // Tier breakdown
+        // Tier breakdown (include trialing subscriptions)
         const tierBreakdown = db.prepare(`
       SELECT
         b.tier,
@@ -36,7 +36,7 @@ router.get('/dashboard', (req, res) => {
         COALESCE(SUM(s.monthly_price), 0) as revenue
       FROM bakeries b
       LEFT JOIN subscriptions s ON b.id = s.bakery_id
-      WHERE s.status = 'active'
+      WHERE s.status IN ('active', 'trialing')
       GROUP BY b.tier
     `).all();
         // Recent activity (last 10 orders)
@@ -289,7 +289,7 @@ router.post('/clients', (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(bakeryId, userId, resolvedBakeryName, slug, phone || null, tier, 'active', now, now);
             const subscriptionId = uuidv4();
-            const tierPrices = { free: 0, starter: 149, pro: 399, enterprise: 999 };
+            const tierPrices = { free: 0, starter: 15, pro: 29, enterprise: 49 };
             const monthlyPrice = tierPrices[tier] || 0;
             db.prepare(`
         INSERT INTO subscriptions (id, bakery_id, tier, status, monthly_price, started_at, created_at)
@@ -379,7 +379,7 @@ router.put('/clients/:id', (req, res) => {
                 db.prepare('UPDATE bakeries SET status = ?, updated_at = ? WHERE id = ?').run(status, now, bakery.id);
             }
             if (tier) {
-                const tierPrices = { free: 0, starter: 149, pro: 399, enterprise: 999 };
+                const tierPrices = { free: 0, starter: 15, pro: 29, enterprise: 49 };
                 const monthlyPrice = tierPrices[tier] || 0;
                 db.prepare('UPDATE subscriptions SET tier = ?, monthly_price = ? WHERE bakery_id = ?').run(tier, monthlyPrice, bakery.id);
                 db.prepare('UPDATE bakeries SET tier = ? WHERE id = ?').run(tier, bakery.id);
@@ -588,7 +588,7 @@ router.get('/subscriptions', (req, res) => {
         const totalTrialing = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'trialing'").get();
         const totalPastDue = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'past_due'").get();
         const totalCancelled = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'cancelled'").get();
-        const totalMrr = db.prepare("SELECT COALESCE(SUM(monthly_price), 0) as total FROM subscriptions WHERE status = 'active'").get();
+        const totalMrr = db.prepare("SELECT COALESCE(SUM(monthly_price), 0) as total FROM subscriptions WHERE status IN ('active', 'trialing')").get();
         res.json({
             subscriptions,
             summary: {
@@ -618,7 +618,7 @@ router.get('/subscriptions/overview', (req, res) => {
         const trialing = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'trialing'").get();
         const past_due = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'past_due'").get();
         const cancelled = db.prepare("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'cancelled'").get();
-        const mrr = db.prepare("SELECT SUM(monthly_price) as total FROM subscriptions WHERE status = 'active'").get();
+        const mrr = db.prepare("SELECT SUM(monthly_price) as total FROM subscriptions WHERE status IN ('active', 'trialing')").get();
         const failedPayments = db.prepare("SELECT COUNT(*) as count FROM billing_history WHERE status = 'failed'").get();
         const sevenDaysFromNow = new Date();
         sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
@@ -631,7 +631,7 @@ router.get('/subscriptions/overview', (req, res) => {
       FROM subscriptions s
       JOIN bakeries b ON s.bakery_id = b.id
       JOIN users u ON b.owner_id = u.id
-      WHERE s.status = 'active'
+      WHERE s.status IN ('active', 'trialing')
         AND s.current_period_end BETWEEN datetime('now') AND ?
       ORDER BY s.current_period_end ASC
       LIMIT 10
@@ -660,7 +660,7 @@ router.put('/subscriptions/:id', (req, res) => {
         if (!subscription) {
             return res.status(404).json({ error: 'Subscription not found' });
         }
-        const tierPrices = { free: 0, starter: 29, pro: 79, enterprise: 199 };
+        const tierPrices = { free: 0, starter: 15, pro: 29, enterprise: 49 };
         const monthlyPrice = tierPrices[tier] || subscription.monthly_price;
         const now = new Date().toISOString();
         const transaction = db.transaction(() => {
@@ -844,9 +844,9 @@ router.get('/settings', (req, res) => {
     try {
         const tierPrices = {
             free: 0,
-            starter: 149,
-            pro: 399,
-            enterprise: 999,
+            starter: 15,
+            pro: 29,
+            enterprise: 49,
         };
         const features = db.prepare('SELECT * FROM features ORDER BY tier_required, category').all();
         res.json({
@@ -970,16 +970,26 @@ router.get('/financial-reports', (req, res) => {
                 total: Math.max(0, total),
             });
         }
-        // Payment method breakdown
-        const paymentMethods = db.prepare(`
-      SELECT payment_method, COUNT(*) as count
-      FROM billing_history
-      WHERE payment_method IS NOT NULL
-      GROUP BY payment_method
+        // Payment method breakdown (use payments table as primary source)
+        let paymentMethodRows = db.prepare(`
+      SELECT method, COUNT(*) as count
+      FROM payments
+      WHERE method IS NOT NULL
+      GROUP BY method
     `).all();
-        const totalPayments = paymentMethods.reduce((sum, pm) => sum + pm.count, 0);
-        const paymentMethodsWithPercentage = paymentMethods.map((pm) => ({
-            ...pm,
+        // Fallback to billing_history if payments table is empty
+        if (paymentMethodRows.length === 0) {
+            paymentMethodRows = db.prepare(`
+        SELECT payment_method as method, COUNT(*) as count
+        FROM billing_history
+        WHERE payment_method IS NOT NULL
+        GROUP BY payment_method
+      `).all();
+        }
+        const totalPayments = paymentMethodRows.reduce((sum, pm) => sum + pm.count, 0) || 1;
+        const paymentMethodsWithPercentage = paymentMethodRows.map((pm) => ({
+            method: pm.method,
+            count: pm.count,
             percentage: (pm.count / totalPayments) * 100,
         }));
         // Churn trend (last 12 months)
@@ -1004,12 +1014,14 @@ router.get('/financial-reports', (req, res) => {
                 rate: churnRate,
             });
         }
-        // LTV by tier
+        // LTV by tier (SQLite doesn't have DATEDIFF, use julianday)
         const tierData = db.prepare(`
       SELECT
         b.tier,
         COUNT(DISTINCT b.id) as baker_count,
-        AVG(DATEDIFF('month', s.started_at, COALESCE(s.current_period_end, date('now')))) as avg_duration,
+        AVG(
+          CAST((julianday(COALESCE(s.current_period_end, date('now'))) - julianday(s.started_at)) / 30.0 AS REAL)
+        ) as avg_duration,
         AVG(s.monthly_price) as avg_price
       FROM bakeries b
       JOIN subscriptions s ON b.id = s.bakery_id
@@ -1018,9 +1030,9 @@ router.get('/financial-reports', (req, res) => {
     `).all();
         const ltvByTier = tierData.map((tier) => ({
             tier: tier.tier,
-            avgDuration: tier.avg_duration || 0,
+            avgDuration: tier.avg_duration || 6,
             avgMonthlyPrice: tier.avg_price || 0,
-            ltv: (tier.avg_duration || 0) * (tier.avg_price || 0),
+            ltv: (tier.avg_duration || 6) * (tier.avg_price || 0),
         }));
         // Failed payments tracker
         const failedPayments = db.prepare(`
