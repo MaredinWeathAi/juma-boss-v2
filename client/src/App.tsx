@@ -2,7 +2,6 @@ import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
-import Landing from './pages/Landing';
 import AdminLayout from './components/layouts/AdminLayout';
 
 // Lazy load admin pages
@@ -41,12 +40,19 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode;
   return <>{children}</>;
 }
 
+// Root redirect — logged in users go straight to their workspace
+function Home() {
+  const { user, loading } = useAuth();
+
+  if (loading) return <PageLoader />;
+  if (!user) return <Navigate to="/login" replace />;
+
+  return <Navigate to={user.role === 'admin' ? '/admin' : '/app'} replace />;
+}
+
 export default function App() {
   return (
     <Routes>
-      {/* Public Landing Page */}
-      <Route path="/" element={<Landing />} />
-
       {/* Login */}
       <Route path="/login" element={<Login />} />
 
@@ -98,6 +104,9 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+
+      {/* Root — straight to workspace if logged in, login if not */}
+      <Route path="/" element={<Home />} />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
