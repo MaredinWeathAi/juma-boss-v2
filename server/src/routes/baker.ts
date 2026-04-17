@@ -2057,8 +2057,8 @@ router.get('/marketing/segments', (req: AuthRequest, res: any) => {
           (SELECT COUNT(*) FROM orders WHERE customer_id = c.id) as order_count,
           (SELECT MAX(created_at) FROM orders WHERE customer_id = c.id) as last_order_date,
           (SELECT COALESCE(SUM(total), 0) FROM orders WHERE customer_id = c.id) as lifetime_value
-        FROM customers
-        WHERE bakery_id = ?
+        FROM customers c
+        WHERE c.bakery_id = ?
       `)
       .all(bakeryId) as any[];
 
