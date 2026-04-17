@@ -21,7 +21,7 @@ app.use(express.json());
 // Initialize database
 initDB();
 
-// Auto-seed if database is empty (handles Railway deploys where seed step may fail)
+// Auto-seed if database is empty OR if named demo accounts are missing (force re-seed)
 try {
   const db = getDB();
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as any;
@@ -30,7 +30,22 @@ try {
     seedDatabase();
     console.log('Database seeded successfully on startup.');
   } else {
-    console.log(`Database has ${userCount.count} users — skipping seed.`);
+    // Check if named demo accounts exist — if not, the seed is outdated and needs refresh
+    const mariaExists = db.prepare("SELECT id FROM users WHERE email = 'maria@jumaboss.com'").get();
+    if (!mariaExists) {
+      console.log('Named demo accounts missing — dropping all data and re-seeding...');
+      // Drop all tables and re-create via initDB
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name != 'sqlite_sequence'").all() as any[];
+      for (const t of tables) {
+        db.prepare(`DROP TABLE IF EXISTS "${t.name}"`).run();
+      }
+      console.log(`Dropped ${tables.length} tables.`);
+      initDB();
+      seedDatabase();
+      console.log('Database re-seeded successfully with named demo accounts.');
+    } else {
+      console.log(`Database has ${userCount.count} users (demo accounts present) — skipping seed.`);
+    }
   }
 } catch (err) {
   console.error('Auto-seed check failed:', err);
