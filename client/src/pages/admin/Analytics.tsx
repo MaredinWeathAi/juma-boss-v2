@@ -173,18 +173,24 @@ const tooltipStyle = {
 
 const COLORS = ['#f59e0b', '#3b82f6', '#8b5cf6', '#10b981', '#ef4444', '#ec4899', '#06b6d4', '#f97316'];
 
-const GrowthBadge = ({ value }: { value: number }) => (
-  <div className="flex items-center gap-1">
-    {value >= 0 ? (
-      <ArrowUpRight size={14} className="text-emerald-400" />
-    ) : (
-      <ArrowDownRight size={14} className="text-red-400" />
-    )}
-    <span className={`text-xs font-semibold ${value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-      {value >= 0 ? '+' : ''}{value.toFixed(1)}%
-    </span>
-  </div>
-);
+// Safe number helper — ensures null/undefined from SQL never crash .toFixed / .toLocaleString
+const n = (v: number | null | undefined): number => v ?? 0;
+
+const GrowthBadge = ({ value }: { value: number }) => {
+  const v = value ?? 0;
+  return (
+    <div className="flex items-center gap-1">
+      {v >= 0 ? (
+        <ArrowUpRight size={14} className="text-emerald-400" />
+      ) : (
+        <ArrowDownRight size={14} className="text-red-400" />
+      )}
+      <span className={`text-xs font-semibold ${v >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+        {v >= 0 ? '+' : ''}{v.toFixed(1)}%
+      </span>
+    </div>
+  );
+};
 
 const KPICard = ({ icon: Icon, label, value, sub, growth }: {
   icon: React.ReactNode;
@@ -333,8 +339,8 @@ export default function Analytics() {
                 <KPICard
                   icon={<ShoppingCart size={24} />}
                   label="Orders This Month"
-                  value={h.ordersThisMonth.toLocaleString()}
-                  sub={`All-time: ${h.totalOrders.toLocaleString()}`}
+                  value={(h.ordersThisMonth ?? 0).toLocaleString()}
+                  sub={`All-time: ${(h.totalOrders ?? 0).toLocaleString()}`}
                   growth={h.ordersGrowth}
                 />
                 <KPICard
@@ -347,7 +353,7 @@ export default function Analytics() {
                   icon={<UserCheck size={24} />}
                   label="Active Bakers"
                   value={h.activeBakers}
-                  sub={`${h.totalCustomers.toLocaleString()} total customers`}
+                  sub={`${(h.totalCustomers ?? 0).toLocaleString()} total customers`}
                 />
               </div>
 
@@ -356,7 +362,7 @@ export default function Analytics() {
                 <div className="flex gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
                   <AlertTriangle size={20} className="text-red-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-white font-semibold">Churn Rate: {h.churnRate.toFixed(1)}%</p>
+                    <p className="text-white font-semibold">Churn Rate: {n(h.churnRate).toFixed(1)}%</p>
                     <p className="text-sm text-red-200">Some bakeries have suspended or churned status. Review the Bakers tab for at-risk accounts.</p>
                   </div>
                 </div>
@@ -382,7 +388,7 @@ export default function Analytics() {
                       <XAxis dataKey="month" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '0.75rem' }} />
                       <YAxis yAxisId="rev" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '0.75rem' }} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
                       <YAxis yAxisId="ord" orientation="right" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '0.75rem' }} />
-                      <Tooltip contentStyle={tooltipStyle} formatter={(v: number, name: string) => [name === 'Revenue' ? formatBRL(v) : v.toLocaleString(), name]} />
+                      <Tooltip contentStyle={tooltipStyle} formatter={(v: number, name: string) => [name === 'Revenue' ? formatBRL(v) : (v ?? 0).toLocaleString(), name]} />
                       <Legend />
                       <Area yAxisId="rev" type="monotone" dataKey="revenue" stroke="#f59e0b" fill="url(#biRevGrad)" name="Revenue" />
                       <Area yAxisId="ord" type="monotone" dataKey="orders" stroke="#3b82f6" fill="url(#biOrdGrad)" name="Orders" />
@@ -414,9 +420,9 @@ export default function Analytics() {
                           <td className="py-3 px-4"><TierBadge tier={t.tier} /></td>
                           <td className="py-3 px-4 text-right text-white font-bold">{t.bakerCount}</td>
                           <td className="py-3 px-4 text-right text-brand-400 font-medium">{formatBRL(t.avgRevenue)}</td>
-                          <td className="py-3 px-4 text-right text-surface-300">{t.avgOrders.toFixed(0)}</td>
-                          <td className="py-3 px-4 text-right text-surface-300">{t.avgProducts.toFixed(0)}</td>
-                          <td className="py-3 px-4 text-right text-surface-300">{t.avgCustomers.toFixed(0)}</td>
+                          <td className="py-3 px-4 text-right text-surface-300">{n(t.avgOrders).toFixed(0)}</td>
+                          <td className="py-3 px-4 text-right text-surface-300">{n(t.avgProducts).toFixed(0)}</td>
+                          <td className="py-3 px-4 text-right text-surface-300">{n(t.avgCustomers).toFixed(0)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -456,13 +462,13 @@ export default function Analytics() {
                           <td className="py-3 px-3 text-surface-300">{b.bakery_name}</td>
                           <td className="py-3 px-3 text-center"><TierBadge tier={b.tier} /></td>
                           <td className="py-3 px-3 text-right text-emerald-400 font-semibold">{formatBRL(b.totalRevenue)}</td>
-                          <td className="py-3 px-3 text-right text-surface-300">{b.totalOrders.toLocaleString()}</td>
+                          <td className="py-3 px-3 text-right text-surface-300">{(b.totalOrders ?? 0).toLocaleString()}</td>
                           <td className="py-3 px-3 text-right text-surface-300">{formatBRL(b.avgOrderValue)}</td>
                           <td className="py-3 px-3 text-right text-surface-300">{b.totalCustomers}</td>
                           <td className="py-3 px-3 text-right text-surface-300">{b.totalProducts}</td>
                           <td className="py-3 px-3 text-right">
                             <span className={`font-semibold ${b.recipeAdoption >= 50 ? 'text-emerald-400' : b.recipeAdoption > 0 ? 'text-yellow-400' : 'text-surface-600'}`}>
-                              {b.recipeAdoption.toFixed(0)}%
+                              {n(b.recipeAdoption).toFixed(0)}%
                             </span>
                           </td>
                         </tr>
@@ -495,7 +501,7 @@ export default function Analytics() {
                           <td className="py-3 px-3 text-surface-300">{b.bakery_name}</td>
                           <td className="py-3 px-3 text-center"><TierBadge tier={b.tier} /></td>
                           <td className="py-3 px-3 text-right text-red-400 font-semibold">{formatBRL(b.totalRevenue)}</td>
-                          <td className="py-3 px-3 text-right text-surface-300">{b.totalOrders.toLocaleString()}</td>
+                          <td className="py-3 px-3 text-right text-surface-300">{(b.totalOrders ?? 0).toLocaleString()}</td>
                           <td className="py-3 px-3 text-right text-surface-300">{b.totalCustomers}</td>
                           <td className="py-3 px-3 text-right text-surface-300">{b.totalProducts}</td>
                         </tr>
@@ -568,7 +574,7 @@ export default function Analytics() {
                         <div>
                           <p className="text-sm text-white capitalize font-medium">{c.category}</p>
                           <p className="text-[10px] text-surface-500">
-                            {c.productCount} products · {c.totalQuantity.toLocaleString()} sold
+                            {c.productCount ?? 0} products · {(c.totalQuantity ?? 0).toLocaleString()} sold
                           </p>
                         </div>
                         <div className="text-right">
@@ -576,7 +582,7 @@ export default function Analytics() {
                           <div className="flex items-center gap-2 justify-end">
                             <span className="text-[10px] text-surface-500">Avg {formatBRL(c.avgPrice)}</span>
                             <span className={`text-xs font-semibold ${c.avgMargin >= 40 ? 'text-emerald-400' : c.avgMargin >= 20 ? 'text-yellow-400' : 'text-red-400'}`}>
-                              {c.avgMargin.toFixed(1)}% margin
+                              {n(c.avgMargin).toFixed(1)}% margin
                             </span>
                           </div>
                         </div>
@@ -609,7 +615,7 @@ export default function Analytics() {
                           <td className="py-3 px-3 text-white font-medium">{p.name}</td>
                           <td className="py-3 px-3 text-surface-400 capitalize">{p.category}</td>
                           <td className="py-3 px-3 text-surface-300">{p.bakery_name}</td>
-                          <td className="py-3 px-3 text-right text-white font-semibold">{p.quantity_sold.toLocaleString()}</td>
+                          <td className="py-3 px-3 text-right text-white font-semibold">{(p.quantity_sold ?? 0).toLocaleString()}</td>
                           <td className="py-3 px-3 text-right text-emerald-400 font-medium">{formatBRL(p.revenue)}</td>
                           <td className="py-3 px-3 text-right text-surface-300">{formatBRL(p.avg_price)}</td>
                         </tr>
@@ -628,19 +634,19 @@ export default function Analytics() {
                 <KPICard
                   icon={<Users size={24} />}
                   label="Total Customers"
-                  value={data.customerIntelligence.totalCustomers.toLocaleString()}
+                  value={(data.customerIntelligence?.totalCustomers ?? 0).toLocaleString()}
                   sub="Across all bakeries"
                 />
                 <KPICard
                   icon={<UserCheck size={24} />}
                   label="Avg per Bakery"
-                  value={data.customerIntelligence.avgCustomersPerBakery.toFixed(1)}
+                  value={n(data.customerIntelligence?.avgCustomersPerBakery).toFixed(1)}
                   sub="Average customers per bakery"
                 />
                 <KPICard
                   icon={<Target size={24} />}
                   label="Revenue Concentration"
-                  value={`${data.customerIntelligence.concentrationPercent.toFixed(1)}%`}
+                  value={`${n(data.customerIntelligence?.concentrationPercent).toFixed(1)}%`}
                   sub="Revenue from top 10% of customers"
                 />
               </div>
@@ -696,8 +702,8 @@ export default function Analytics() {
                       return (
                         <div key={s.status} className={`rounded-lg p-4 ${color.split(' ')[1]}`}>
                           <p className="text-xs text-surface-400 capitalize mb-1">{s.status}</p>
-                          <p className={`text-2xl font-bold ${color.split(' ')[0]}`}>{s.count.toLocaleString()}</p>
-                          <p className="text-xs text-surface-500">{s.percentage.toFixed(1)}%</p>
+                          <p className={`text-2xl font-bold ${color.split(' ')[0]}`}>{(s.count ?? 0).toLocaleString()}</p>
+                          <p className="text-xs text-surface-500">{n(s.percentage).toFixed(1)}%</p>
                         </div>
                       );
                     })}
@@ -710,7 +716,7 @@ export default function Analytics() {
                   <p className="text-surface-400 text-sm mb-1">Avg Delivery Time</p>
                   <p className="text-4xl font-bold text-white">
                     {data.operationalMetrics.avgDeliveryTimeHours > 0
-                      ? `${data.operationalMetrics.avgDeliveryTimeHours.toFixed(0)}h`
+                      ? `${n(data.operationalMetrics?.avgDeliveryTimeHours).toFixed(0)}h`
                       : 'N/A'}
                   </p>
                   <p className="text-xs text-surface-500 mt-1">From order to delivery</p>
@@ -729,11 +735,11 @@ export default function Analytics() {
                         <div className="flex items-center justify-between mb-3">
                           <p className="text-white font-semibold capitalize text-lg">{pm.method}</p>
                           <span className="text-xs bg-brand-500/20 text-brand-400 px-2 py-1 rounded-full font-semibold">
-                            {pct.toFixed(0)}%
+                            {n(pct).toFixed(0)}%
                           </span>
                         </div>
                         <p className="text-2xl font-bold text-emerald-400">{formatBRL(pm.totalAmount)}</p>
-                        <p className="text-xs text-surface-500 mt-1">{pm.count.toLocaleString()} transactions</p>
+                        <p className="text-xs text-surface-500 mt-1">{(pm.count ?? 0).toLocaleString()} transactions</p>
                         <div className="w-full bg-surface-700 rounded-full h-2 mt-3">
                           <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: COLORS[i % COLORS.length] }} />
                         </div>
@@ -756,7 +762,7 @@ export default function Analytics() {
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
                     <XAxis dataKey="cohort" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '0.75rem' }} />
                     <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '0.75rem' }} tickFormatter={v => `${v}%`} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number, name: string) => [name === 'Retention %' ? `${v.toFixed(1)}%` : v, name]} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number, name: string) => [name === 'Retention %' ? `${n(v).toFixed(1)}%` : v, name]} />
                     <Legend />
                     <Bar dataKey="retentionRate" fill="#10b981" name="Retention %" />
                   </BarChart>
@@ -786,7 +792,7 @@ export default function Analytics() {
                           <td className="py-3 px-4 text-right text-surface-300">{c.activeBakers}</td>
                           <td className="py-3 px-4 text-right">
                             <span className={`font-semibold ${c.retentionRate >= 80 ? 'text-emerald-400' : c.retentionRate >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
-                              {c.retentionRate.toFixed(1)}%
+                              {n(c.retentionRate).toFixed(1)}%
                             </span>
                           </td>
                           <td className="py-3 px-4 text-right text-brand-400 font-medium">{formatBRL(c.totalRevenue)}</td>
