@@ -408,16 +408,16 @@ export function seedDatabase() {
     };
     // Pre-hash the password once for all bakers
     const bakerPassword = bcryptjs.hashSync('demo123', 10);
-    // Distribution: ~1000 bakers
-    // Free: 500 (50%)
-    // Starter: 300 (30%)
-    // Pro: 150 (15%)
-    // Enterprise: 50 (5%)
+    // Distribution: 981 bakers
+    // Free: 490 (50%)
+    // Starter: 295 (30%)
+    // Pro: 148 (15%)
+    // Enterprise: 48 (5%)
     const bakerTargets = [
-        { tier: 'free', count: 500, minProducts: 3, maxProducts: 8, minCustomers: 3, maxCustomers: 10, minOrderMonths: 3, maxOrderMonths: 6, ordersPerMonthMin: 5, ordersPerMonthMax: 15 },
-        { tier: 'starter', count: 300, minProducts: 10, maxProducts: 25, minCustomers: 15, maxCustomers: 40, minOrderMonths: 4, maxOrderMonths: 8, ordersPerMonthMin: 25, ordersPerMonthMax: 60 },
-        { tier: 'pro', count: 150, minProducts: 20, maxProducts: 40, minCustomers: 40, maxCustomers: 100, minOrderMonths: 6, maxOrderMonths: 10, ordersPerMonthMin: 60, ordersPerMonthMax: 150 },
-        { tier: 'enterprise', count: 50, minProducts: 30, maxProducts: 50, minCustomers: 80, maxCustomers: 250, minOrderMonths: 8, maxOrderMonths: 12, ordersPerMonthMin: 150, ordersPerMonthMax: 300 },
+        { tier: 'free', count: 490, minProducts: 3, maxProducts: 8, minCustomers: 3, maxCustomers: 10, minOrderMonths: 3, maxOrderMonths: 6, ordersPerMonthMin: 5, ordersPerMonthMax: 15 },
+        { tier: 'starter', count: 295, minProducts: 10, maxProducts: 25, minCustomers: 15, maxCustomers: 40, minOrderMonths: 4, maxOrderMonths: 8, ordersPerMonthMin: 25, ordersPerMonthMax: 60 },
+        { tier: 'pro', count: 148, minProducts: 20, maxProducts: 40, minCustomers: 40, maxCustomers: 100, minOrderMonths: 6, maxOrderMonths: 10, ordersPerMonthMin: 60, ordersPerMonthMax: 150 },
+        { tier: 'enterprise', count: 48, minProducts: 30, maxProducts: 50, minCustomers: 80, maxCustomers: 250, minOrderMonths: 8, maxOrderMonths: 12, ordersPerMonthMin: 150, ordersPerMonthMax: 300 },
     ];
     const tierPrices = { free: 0, starter: 15, pro: 29, enterprise: 49 };
     // Prepare INSERT statements once (reuse)
@@ -680,7 +680,7 @@ export function seedDatabase() {
   `);
     insertAnnouncementStmt.run(uuidv4(), adminId, 'Welcome to Juma Boss v2', 'We are excited to announce the latest version of Juma Boss with improved performance and new features!', null, 1, now);
     insertAnnouncementStmt.run(uuidv4(), adminId, 'New Analytics Dashboard Available', 'Check out our new advanced analytics dashboard for better insights into your business.', 'pro,enterprise', 1, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString());
-    console.log(`\nDatabase seeded successfully with ~1000 bakers!`);
+    console.log(`\nDatabase seeded successfully with 981 bakers!`);
     console.log(`Total bakers seeded: ${globalBakerCount}`);
 }
 // Run seed if this file is executed directly
