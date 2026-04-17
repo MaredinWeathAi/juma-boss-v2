@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -10,9 +11,26 @@ let db: Database.Database;
 
 export function getDB(): Database.Database {
   if (!db) {
-    db = new Database(dbPath);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
+    try {
+      db = new Database(dbPath);
+      db.pragma('journal_mode = WAL');
+      db.pragma('foreign_keys = ON');
+    } catch (err: any) {
+      // If DB is corrupt, delete it and create fresh
+      if (err.code === 'SQLITE_CORRUPT' || err.message?.includes('malformed')) {
+        console.warn('Corrupt database detected — deleting and recreating...');
+        try {
+          if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
+          if (fs.existsSync(dbPath + '-wal')) fs.unlinkSync(dbPath + '-wal');
+          if (fs.existsSync(dbPath + '-shm')) fs.unlinkSync(dbPath + '-shm');
+        } catch { /* ignore cleanup errors */ }
+        db = new Database(dbPath);
+        db.pragma('journal_mode = WAL');
+        db.pragma('foreign_keys = ON');
+      } else {
+        throw err;
+      }
+    }
   }
   return db;
 }
