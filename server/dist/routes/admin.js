@@ -1359,15 +1359,16 @@ router.get('/bi-dashboard', (req, res) => {
       LIMIT 10
     `).all();
         const topBakersFormatted = topBakers.map((b) => ({
-            bakerName: b.baker_name,
-            bakeryName: b.bakery_name,
+            id: b.bakery_id || b.baker_name,
+            name: b.baker_name,
+            bakery_name: b.bakery_name,
             tier: b.tier,
             totalOrders: b.total_orders,
             totalRevenue: parseFloat(b.total_revenue.toFixed(2)),
             avgOrderValue: parseFloat(b.avg_order_value.toFixed(2)),
             totalCustomers: b.total_customers,
             totalProducts: b.total_products,
-            recipeAdoptionPct: b.total_products_2 > 0 ? parseFloat((b.recipe_items / b.total_products_2 * 100).toFixed(2)) : 0,
+            recipeAdoption: b.total_products_2 > 0 ? parseFloat((b.recipe_items / b.total_products_2 * 100).toFixed(2)) : 0,
         }));
         // Bottom 5 bakers by revenue (churn risk)
         const bottomBakers = db.prepare(`
@@ -1391,15 +1392,16 @@ router.get('/bi-dashboard', (req, res) => {
       LIMIT 5
     `).all();
         const bottomBakersFormatted = bottomBakers.map((b) => ({
-            bakerName: b.baker_name,
-            bakeryName: b.bakery_name,
+            id: b.bakery_id || b.baker_name,
+            name: b.baker_name,
+            bakery_name: b.bakery_name,
             tier: b.tier,
             totalOrders: b.total_orders,
             totalRevenue: parseFloat(b.total_revenue.toFixed(2)),
             avgOrderValue: parseFloat(b.avg_order_value.toFixed(2)),
             totalCustomers: b.total_customers,
             totalProducts: b.total_products,
-            recipeAdoptionPct: b.total_products_2 > 0 ? parseFloat((b.recipe_items / b.total_products_2 * 100).toFixed(2)) : 0,
+            recipeAdoption: b.total_products_2 > 0 ? parseFloat((b.recipe_items / b.total_products_2 * 100).toFixed(2)) : 0,
         }));
         // Most active bakers (by order count this month)
         const mostActiveBakers = db.prepare(`
@@ -1416,10 +1418,16 @@ router.get('/bi-dashboard', (req, res) => {
       ORDER BY order_count DESC
       LIMIT 10
     `).all(currentMonthStr);
+        const mostActiveBakersFormatted = mostActiveBakers.map((b) => ({
+            name: b.baker_name,
+            bakery_name: b.bakery_name,
+            ordersThisMonth: b.order_count,
+            revenueThisMonth: 0,
+        }));
         const bakerPerformance = {
-            topByRevenue: topBakersFormatted,
-            churnRiskBottom5: bottomBakersFormatted,
-            mostActiveThisMonth: mostActiveBakers,
+            topBakers: topBakersFormatted,
+            bottomBakers: bottomBakersFormatted,
+            mostActiveThisMonth: mostActiveBakersFormatted,
         };
         // ============================================
         // 4. COHORT ANALYSIS
@@ -1451,10 +1459,10 @@ router.get('/bi-dashboard', (req, res) => {
                 ? cohortRevenue.total / cohortBakers.count
                 : 0;
             cohortAnalysis.push({
-                cohortMonth: cohortStr,
-                bakerCount: cohortBakers.count,
-                activeCount: activeCohortBakers.count,
-                retentionPct: parseFloat(retentionPct.toFixed(2)),
+                cohort: cohortStr,
+                totalBakers: cohortBakers.count,
+                activeBakers: activeCohortBakers.count,
+                retentionRate: parseFloat(retentionPct.toFixed(2)),
                 totalRevenue: parseFloat(cohortRevenue.total.toFixed(2)),
                 avgRevenuePerBaker: parseFloat(avgRevenuePerBaker.toFixed(2)),
             });
@@ -1479,12 +1487,12 @@ router.get('/bi-dashboard', (req, res) => {
       LIMIT 20
     `).all();
         const topProductsFormatted = topProducts.map((p) => ({
-            productName: p.product_name,
+            name: p.product_name,
             category: p.category,
-            bakeryName: p.bakery_name,
-            quantitySold: p.quantity_sold,
+            bakery_name: p.bakery_name,
+            quantity_sold: p.quantity_sold,
             revenue: parseFloat(p.revenue.toFixed(2)),
-            avgPrice: parseFloat(p.avg_price.toFixed(2)),
+            avg_price: parseFloat(p.avg_price.toFixed(2)),
         }));
         // Category breakdown
         const categoryBreakdown = db.prepare(`
@@ -1540,10 +1548,10 @@ router.get('/bi-dashboard', (req, res) => {
       LIMIT 10
     `).all();
         const topCustomersFormatted = topCustomers.map((c) => ({
-            customerName: c.name,
-            bakeryName: c.bakery_name,
-            totalOrders: c.total_orders,
-            totalSpent: parseFloat(c.total_spent.toFixed(2)),
+            name: c.name,
+            bakery_name: c.bakery_name,
+            total_orders: c.total_orders,
+            total_spent: parseFloat(c.total_spent.toFixed(2)),
         }));
         // Customer concentration: % of revenue from top 10% of customers
         const totalRevenueAll = db.prepare(`
@@ -1567,8 +1575,8 @@ router.get('/bi-dashboard', (req, res) => {
         const customerIntelligence = {
             totalCustomers: totalCustomersCount.count,
             avgCustomersPerBakery: parseFloat(avgCustomersPerBakery.toFixed(2)),
-            topBySpent: topCustomersFormatted,
-            concentrationTop10Pct: parseFloat(customerConcentration.toFixed(2)),
+            topCustomers: topCustomersFormatted,
+            concentrationPercent: parseFloat(customerConcentration.toFixed(2)),
         };
         // ============================================
         // 7. OPERATIONAL METRICS
@@ -1659,10 +1667,10 @@ router.get('/bi-dashboard', (req, res) => {
             tierInsights.push({
                 tier,
                 bakerCount: tierBakeries.count,
-                avgRevenuePerBaker: parseFloat(avgRevenuePerTierBaker.toFixed(2)),
-                avgOrdersPerBaker: parseFloat(avgOrdersPerTierBaker.toFixed(2)),
-                avgProductsPerBaker: tierProducts.avg_products ? parseFloat(tierProducts.avg_products.toFixed(2)) : 0,
-                avgCustomersPerBaker: tierCustomers.avg_customers ? parseFloat(tierCustomers.avg_customers.toFixed(2)) : 0,
+                avgRevenue: parseFloat(avgRevenuePerTierBaker.toFixed(2)),
+                avgOrders: parseFloat(avgOrdersPerTierBaker.toFixed(2)),
+                avgProducts: tierProducts.avg_products ? parseFloat(tierProducts.avg_products.toFixed(2)) : 0,
+                avgCustomers: tierCustomers.avg_customers ? parseFloat(tierCustomers.avg_customers.toFixed(2)) : 0,
             });
         }
         // ============================================
