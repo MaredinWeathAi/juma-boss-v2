@@ -413,6 +413,18 @@ export function seedDatabase() {
     // Starter: 295 (30%)
     // Pro: 148 (15%)
     // Enterprise: 48 (5%)
+    //
+    // Named demo accounts (first baker in each tier gets a friendly email):
+    //   maria@jumaboss.com     / demo123  — Free tier
+    //   carlos@jumaboss.com    / demo123  — Starter tier
+    //   patricia@jumaboss.com  / demo123  — Pro tier
+    //   regina@jumaboss.com    / demo123  — Enterprise tier
+    const namedDemoAccounts = {
+        free: { email: 'maria@jumaboss.com', name: 'Maria Santos', bakeryName: 'Doces da Maria' },
+        starter: { email: 'carlos@jumaboss.com', name: 'Carlos Oliveira', bakeryName: 'Padaria do Carlos' },
+        pro: { email: 'patricia@jumaboss.com', name: 'Patrícia Rodrigues', bakeryName: 'Confeitaria Artesanal PR' },
+        enterprise: { email: 'regina@jumaboss.com', name: 'Regina Carvalho', bakeryName: 'Rede Carvalho Padarias' },
+    };
     const bakerTargets = [
         { tier: 'free', count: 490, minProducts: 3, maxProducts: 8, minCustomers: 3, maxCustomers: 10, minOrderMonths: 3, maxOrderMonths: 6, ordersPerMonthMin: 5, ordersPerMonthMax: 15 },
         { tier: 'starter', count: 295, minProducts: 10, maxProducts: 25, minCustomers: 15, maxCustomers: 40, minOrderMonths: 4, maxOrderMonths: 8, ordersPerMonthMin: 25, ordersPerMonthMax: 60 },
@@ -497,28 +509,37 @@ export function seedDatabase() {
                 console.log(`Seeded ${globalBakerCount} bakers...`);
             }
             const bakerIndex = globalBakerCount - 1;
+            const isFirstInTier = (i === 0);
+            const demoAccount = isFirstInTier ? namedDemoAccounts[tierTarget.tier] : null;
             const isMale = Math.random() > 0.5;
             const firstName = isMale
                 ? firstNamesMale[Math.floor(Math.random() * firstNamesMale.length)]
                 : firstNamesFemale[Math.floor(Math.random() * firstNamesFemale.length)];
             const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
-            const bakerName = `${firstName} ${lastName}`;
-            const bakerEmail = `baker${bakerIndex}@jumaboss.com`;
+            const bakerName = demoAccount ? demoAccount.name : `${firstName} ${lastName}`;
+            const bakerEmail = demoAccount ? demoAccount.email : `baker${bakerIndex}@jumaboss.com`;
             const userId = uuidv4();
             const bakeryId = uuidv4();
             const subscriptionId = uuidv4();
             const paymentMethodId = uuidv4();
             // Generate bakery name
-            const bakeryPrefix = bakeryPrefixes[Math.floor(Math.random() * bakeryPrefixes.length)];
-            const bakerySuffix = bakerySuffixes[Math.floor(Math.random() * bakerySuffixes.length)];
             let bakeryName = '';
-            if (bakeryPrefix === 'Rede' || bakeryPrefix === 'Mega' || bakeryPrefix === 'Super') {
-                bakeryName = `${bakeryPrefix} ${lastName} ${bakerySuffix}`;
+            if (demoAccount) {
+                bakeryName = demoAccount.bakeryName;
             }
             else {
-                bakeryName = `${bakeryPrefix} ${lastName}`;
+                const bakeryPrefix = bakeryPrefixes[Math.floor(Math.random() * bakeryPrefixes.length)];
+                const bakerySuffix = bakerySuffixes[Math.floor(Math.random() * bakerySuffixes.length)];
+                if (bakeryPrefix === 'Rede' || bakeryPrefix === 'Mega' || bakeryPrefix === 'Super') {
+                    bakeryName = `${bakeryPrefix} ${lastName} ${bakerySuffix}`;
+                }
+                else {
+                    bakeryName = `${bakeryPrefix} ${lastName}`;
+                }
             }
-            const slug = `bakery-${bakerIndex}`;
+            const slug = demoAccount
+                ? demoAccount.bakeryName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+                : `bakery-${bakerIndex}`;
             // Phone generation
             const phoneArea = ['11', '21', '31', '41', '51', '61', '71', '81', '85', '27'][bakerIndex % 10];
             const phoneNum = `+55${phoneArea}9${Math.floor(Math.random() * 90000000 + 10000000)}`;
