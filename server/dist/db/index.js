@@ -440,6 +440,72 @@ export function initDB() {
     CREATE INDEX IF NOT EXISTS idx_recipe_items_product_id ON recipe_items(product_id);
     CREATE INDEX IF NOT EXISTS idx_recipe_items_ingredient_id ON recipe_items(ingredient_id);
   `);
+    // Marketing campaigns table
+    db.exec(`
+    CREATE TABLE IF NOT EXISTS marketing_campaigns (
+      id TEXT PRIMARY KEY,
+      bakery_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      channel TEXT NOT NULL DEFAULT 'whatsapp',
+      target_audience TEXT NOT NULL DEFAULT 'all',
+      segment_id TEXT,
+      message_title TEXT,
+      message_body TEXT,
+      scheduled_at TEXT,
+      sent_at TEXT,
+      completed_at TEXT,
+      budget REAL,
+      recipient_count INT DEFAULT 0,
+      delivered_count INT DEFAULT 0,
+      read_count INT DEFAULT 0,
+      conversion_count INT DEFAULT 0,
+      revenue_generated REAL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (bakery_id) REFERENCES bakeries(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_marketing_campaigns_bakery_id ON marketing_campaigns(bakery_id);
+    CREATE INDEX IF NOT EXISTS idx_marketing_campaigns_status ON marketing_campaigns(status);
+    CREATE INDEX IF NOT EXISTS idx_marketing_campaigns_created_at ON marketing_campaigns(created_at);
+  `);
+    // Customer segments table
+    db.exec(`
+    CREATE TABLE IF NOT EXISTS customer_segments (
+      id TEXT PRIMARY KEY,
+      bakery_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'auto',
+      criteria TEXT,
+      customer_count INT DEFAULT 0,
+      avg_order_value REAL DEFAULT 0,
+      avg_frequency REAL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (bakery_id) REFERENCES bakeries(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_segments_bakery_id ON customer_segments(bakery_id);
+  `);
+    // Campaign messages table
+    db.exec(`
+    CREATE TABLE IF NOT EXISTS campaign_messages (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL,
+      customer_id TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      sent_at TEXT,
+      delivered_at TEXT,
+      read_at TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (campaign_id) REFERENCES marketing_campaigns(id) ON DELETE CASCADE,
+      FOREIGN KEY (customer_id) REFERENCES customers(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_campaign_messages_campaign_id ON campaign_messages(campaign_id);
+    CREATE INDEX IF NOT EXISTS idx_campaign_messages_customer_id ON campaign_messages(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_campaign_messages_status ON campaign_messages(status);
+  `);
 }
 export function getBakeryForUser(userId) {
     const db = getDB();

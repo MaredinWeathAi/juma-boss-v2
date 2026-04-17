@@ -1755,4 +1755,486 @@ router.get('/profitability', (req: AuthRequest, res: any) => {
   }
 });
 
+// ============= MARKETING ROUTES =============
+
+// GET /baker/marketing/access - Check tier access to marketing features
+router.get('/marketing/access', (req: AuthRequest, res: any) => {
+  try {
+    const bakeryId = getBakeryId(req.user!.id);
+    const bakery = db.prepare('SELECT tier FROM bakeries WHERE id = ?').get(bakeryId) as any;
+
+    if (!bakery) {
+      return res.status(404).json({ error: 'Bakery not found' });
+    }
+
+    const tierAccess = {
+      free: { campaigns: false, whatsapp: false, segmentation: false, analytics: false },
+      starter: { campaigns: true, whatsapp: false, segmentation: true, analytics: false },
+      pro: { campaigns: true, whatsapp: true, segmentation: true, analytics: true },
+      enterprise: { campaigns: true, whatsapp: true, segmentation: true, analytics: true },
+    };
+
+    res.json({
+      tier: bakery.tier,
+      access: tierAccess[bakery.tier as keyof typeof tierAccess] || tierAccess.free,
+    });
+  } catch (err: any) {
+    console.error('Marketing access error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /baker/marketing/campaigns - List campaigns
+router.get('/marketing/campaigns', (req: AuthRequest, res: any) => {
+  try {
+    const bakeryId = getBakeryId(req.user!.id);
+    const status = (req.query.status as string) || '';
+    const page = parseInt((req.query.page as string) || '1');
+    const limit = parseInt((req.query.limit as string) || '20');
+    const offset = (page - 1) * limit;
+
+    let query = 'SELECT * FROM marketing_campaigns WHERE bakery_id = ?';
+    const params: any[] = [bakeryId];
+
+    if (status) {
+      query += ' AND status = ?';
+      params.push(status);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const campaigns = db.prepare(query).all(...params) as any[];
+
+    let countQuery = 'SELECT COUNT(*) as count FROM marketing_campaigns WHERE bakery_id = ?';
+    const countParams: any[] = [bakeryId];
+
+    if (status) {
+      countQuery += ' AND status = ?';
+      countParams.push(status);
+    }
+
+    const totalCount = db.prepare(countQuery).get(...countParams) as any;
+
+    res.json({
+      campaigns,
+      pagination: {
+        page,
+        limit,
+        total: totalCount.count,
+        pages: Math.ceil(totalCount.count / limit),
+      },
+    });
+  } catch (err: any) {
+    console.error('Get campaigns error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /baker/marketing/campaigns - Create campaign
+router.post('/marketing/campaigns', (req: AuthRequest, res: any) => {
+  try {
+    const bakeryId = getBakeryId(req.user!.id);
+    const {
+      name,
+      type,
+      channel,
+      targetAudience,
+      segmentId,
+      messageTitle,
+      messageBody,
+      scheduledAt,
+      budget,
+    } = req.body;
+
+    if (!name || !type || !channel) {
+      return res.status(400).json({ error: 'Missing required fields: name, type, channel' });
+    }
+
+    const campaignId = uuidv4();
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO marketing_campaigns (
+        id, bakery_id, name, type, status, channel, target_audience, segment_id,
+        message_title, message_body, scheduled_at, budget, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      campaignId,
+      bakeryId,
+      name,
+      type,
+      'draft',
+      channel,
+      targetAudience || 'all',
+      segmentId || null,
+      messageTitle || null,
+      messageBody || null,
+      scheduledAt || null,
+      budget || null,
+      now,
+      now
+    );
+
+    const campaign = db.prepare('SELECT * FROM marketing_campaigns WHERE id = ?').get(campaignId);
+    res.status(201).json(campaign);
+  } catch (err: any) {
+    console.error('Create campaign error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /baker/marketing/campaigns/:id - Update campaign
+router.put('/marketing/campaigns/:id', (req: AuthRequest, res: any) => {
+  try {
+    const bakeryId = getBakeryId(req.user!.id);
+    const campaignId = req.params.id;
+    const {
+      name,
+      type,
+      channel,
+      targetAudience,
+      segmentId,
+      messageTitle,
+      messageBody,
+      scheduledAt,
+      status,
+      budget,
+    } = req.body as any;
+
+    const campaign = db
+      .prepare('SELECT * FROM marketing_campaigns WHERE id = ? AND bakery_id = ?')
+      .get(campaignId, bakeryId) as any;
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      UPDATE marketing_campaigns SET
+        name = ?,
+        type = ?,
+        channel = ?,
+        target_audience = ?,
+        segment_id = ?,
+        message_title = ?,
+        message_body = ?,
+        scheduled_at = ?,
+        status = ?,
+        budget = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(
+      name || campaign.name,
+      type || campaign.type,
+      channel || campaign.channel,
+      targetAudience || campaign.target_audience,
+      segmentId || campaign.segment_id,
+      messageTitle || campaign.message_title,
+      messageBody || campaign.message_body,
+      scheduledAt || campaign.scheduled_at,
+      status || campaign.status,
+      budget !== undefined ? budget : campaign.budget,
+      now,
+      campaignId
+    );
+
+    const updated = db.prepare('SELECT * FROM marketing_campaigns WHERE id = ?').get(campaignId);
+    res.json(updated);
+  } catch (err: any) {
+    console.error('Update campaign error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /baker/marketing/campaigns/:id - Delete campaign (draft only)
+router.delete('/marketing/campaigns/:id', (req: AuthRequest, res: any) => {
+  try {
+    const bakeryId = getBakeryId(req.user!.id);
+    const campaignId = req.params.id;
+
+    const campaign = db
+      .prepare('SELECT * FROM marketing_campaigns WHERE id = ? AND bakery_id = ?')
+      .get(campaignId, bakeryId) as any;
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    if (campaign.status !== 'draft') {
+      return res.status(400).json({ error: 'Only draft campaigns can be deleted' });
+    }
+
+    db.prepare('DELETE FROM marketing_campaigns WHERE id = ?').run(campaignId);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Delete campaign error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /baker/marketing/campaigns/:id/send - Send campaign
+router.post('/marketing/campaigns/:id/send', (req: AuthRequest, res: any) => {
+  try {
+    const bakeryId = getBakeryId(req.user!.id);
+    const campaignId = req.params.id;
+
+    const campaign = db
+      .prepare('SELECT * FROM marketing_campaigns WHERE id = ? AND bakery_id = ?')
+      .get(campaignId, bakeryId) as any;
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    // Get customers based on target audience
+    let customerQuery = 'SELECT id FROM customers WHERE bakery_id = ?';
+    const customerParams: any[] = [bakeryId];
+
+    if (campaign.target_audience !== 'all') {
+      if (campaign.target_audience === 'new') {
+        customerQuery += ' AND created_at >= datetime("now", "-30 days")';
+      } else if (campaign.target_audience === 'vip') {
+        customerQuery += ' AND total_spent > 500';
+      } else if (campaign.target_audience === 'inactive') {
+        customerQuery += ' AND created_at < datetime("now", "-90 days")';
+      }
+    }
+
+    const customers = db.prepare(customerQuery).all(...customerParams) as any[];
+    const now = new Date().toISOString();
+    const transaction = db.transaction(() => {
+      // Create campaign messages for each customer
+      for (const customer of customers) {
+        const messageId = uuidv4();
+        const deliveryStatus = Math.random() > 0.15 ? 'delivered' : 'failed';
+        const deliveredAt = deliveryStatus === 'delivered' ? now : null;
+
+        db.prepare(`
+          INSERT INTO campaign_messages (id, campaign_id, customer_id, channel, status, sent_at, delivered_at, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(messageId, campaignId, customer.id, campaign.channel, deliveryStatus, now, deliveredAt, now);
+      }
+
+      // Update campaign status and stats
+      const deliveredCount = db
+        .prepare('SELECT COUNT(*) as count FROM campaign_messages WHERE campaign_id = ? AND status = "delivered"')
+        .get(campaignId) as any;
+
+      db.prepare(`
+        UPDATE marketing_campaigns SET
+          status = ?,
+          sent_at = ?,
+          recipient_count = ?,
+          delivered_count = ?,
+          updated_at = ?
+        WHERE id = ?
+      `).run('sent', now, customers.length, deliveredCount.count, now, campaignId);
+    });
+
+    transaction();
+
+    const updated = db.prepare('SELECT * FROM marketing_campaigns WHERE id = ?').get(campaignId);
+    res.json(updated);
+  } catch (err: any) {
+    console.error('Send campaign error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /baker/marketing/segments - Get RFM segments
+router.get('/marketing/segments', (req: AuthRequest, res: any) => {
+  try {
+    const bakeryId = getBakeryId(req.user!.id);
+
+    // Get all customers for this bakery
+    const customers = db
+      .prepare(`
+        SELECT c.*,
+          (SELECT COUNT(*) FROM orders WHERE customer_id = c.id) as order_count,
+          (SELECT MAX(created_at) FROM orders WHERE customer_id = c.id) as last_order_date,
+          (SELECT COALESCE(SUM(total), 0) FROM orders WHERE customer_id = c.id) as lifetime_value
+        FROM customers
+        WHERE bakery_id = ?
+      `)
+      .all(bakeryId) as any[];
+
+    const now = new Date();
+    const segments: Record<string, any> = {
+      champions: { name: 'Champions', customers: [], avg_value: 0, avg_frequency: 0, description: 'Alto Valor, Compras Frequentes' },
+      loyal: { name: 'Leais', customers: [], avg_value: 0, avg_frequency: 0, description: 'Clientes Consistentes' },
+      potentialLoyalists: { name: 'Potencial Leal', customers: [], avg_value: 0, avg_frequency: 0, description: 'Bom Potencial' },
+      newCustomers: { name: 'Novos Clientes', customers: [], avg_value: 0, avg_frequency: 0, description: 'Adquiridos Recentemente' },
+      atRisk: { name: 'Em Risco', customers: [], avg_value: 0, avg_frequency: 0, description: 'Inativos Recentemente' },
+      hibernating: { name: 'Adormecidos', customers: [], avg_value: 0, avg_frequency: 0, description: 'Inativos há Muito Tempo' },
+      lost: { name: 'Perdidos', customers: [], avg_value: 0, avg_frequency: 0, description: 'Sem Atividade Prolongada' },
+    };
+
+    // Classify customers
+    for (const customer of customers) {
+      const daysSinceLastOrder = customer.last_order_date
+        ? Math.floor((now.getTime() - new Date(customer.last_order_date).getTime()) / (1000 * 60 * 60 * 24))
+        : 999;
+
+      const recency = daysSinceLastOrder;
+      const frequency = customer.order_count || 0;
+      const monetary = customer.lifetime_value || 0;
+
+      let segment = 'lost';
+
+      if (recency <= 30 && frequency >= 5 && monetary > 500) {
+        segment = 'champions';
+      } else if (recency <= 60 && frequency >= 3 && monetary > 300) {
+        segment = 'loyal';
+      } else if (recency <= 90 && frequency >= 2 && monetary > 100) {
+        segment = 'potentialLoyalists';
+      } else if (recency <= 30 && frequency <= 1) {
+        segment = 'newCustomers';
+      } else if (recency > 30 && recency <= 90 && frequency >= 1) {
+        segment = 'atRisk';
+      } else if (recency > 90 && recency <= 180) {
+        segment = 'hibernating';
+      }
+
+      segments[segment].customers.push({
+        id: customer.id,
+        name: customer.name,
+        email: customer.email,
+        order_count: frequency,
+        lifetime_value: monetary,
+      });
+    }
+
+    // Calculate averages for each segment
+    const response = Object.entries(segments).map(([key, segment]: [string, any]) => ({
+      id: key,
+      name: segment.name,
+      description: segment.description,
+      customer_count: segment.customers.length,
+      avg_order_value: segment.customers.length > 0
+        ? segment.customers.reduce((sum: number, c: any) => sum + c.lifetime_value, 0) / segment.customers.length
+        : 0,
+      avg_frequency: segment.customers.length > 0
+        ? segment.customers.reduce((sum: number, c: any) => sum + c.order_count, 0) / segment.customers.length
+        : 0,
+      customers: segment.customers,
+    }));
+
+    res.json({ segments: response });
+  } catch (err: any) {
+    console.error('Get segments error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /baker/marketing/analytics - Get marketing analytics dashboard
+router.get('/marketing/analytics', (req: AuthRequest, res: any) => {
+  try {
+    const bakeryId = getBakeryId(req.user!.id);
+
+    // Campaign overview
+    const campaignStats = db
+      .prepare(`
+        SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN status = 'sent' OR status = 'completed' THEN 1 ELSE 0 END) as completed,
+          SUM(CASE WHEN status IN ('scheduled', 'sent') THEN 1 ELSE 0 END) as active
+        FROM marketing_campaigns
+        WHERE bakery_id = ?
+      `)
+      .get(bakeryId) as any;
+
+    // Delivery metrics
+    const deliveryMetrics = db
+      .prepare(`
+        SELECT
+          COUNT(*) as total_sent,
+          SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered,
+          SUM(CASE WHEN status = 'read' THEN 1 ELSE 0 END) as read
+        FROM campaign_messages
+        WHERE campaign_id IN (SELECT id FROM marketing_campaigns WHERE bakery_id = ?)
+      `)
+      .get(bakeryId) as any;
+
+    // Campaign performance by type
+    const performanceByType = db
+      .prepare(`
+        SELECT
+          type,
+          COUNT(*) as campaign_count,
+          COALESCE(SUM(recipient_count), 0) as total_recipients,
+          COALESCE(SUM(delivered_count), 0) as total_delivered,
+          COALESCE(SUM(conversion_count), 0) as total_conversions,
+          COALESCE(SUM(revenue_generated), 0) as total_revenue
+        FROM marketing_campaigns
+        WHERE bakery_id = ? AND (status = 'sent' OR status = 'completed')
+        GROUP BY type
+      `)
+      .all(bakeryId) as any[];
+
+    // Campaign performance over time (last 12 months)
+    const performanceOverTime = db
+      .prepare(`
+        SELECT
+          strftime('%Y-%m', created_at) as month,
+          COUNT(*) as campaigns_created,
+          SUM(CASE WHEN status IN ('sent', 'completed') THEN 1 ELSE 0 END) as campaigns_sent,
+          COALESCE(SUM(revenue_generated), 0) as revenue
+        FROM marketing_campaigns
+        WHERE bakery_id = ? AND created_at >= datetime('now', '-12 months')
+        GROUP BY strftime('%Y-%m', created_at)
+        ORDER BY month DESC
+      `)
+      .all(bakeryId) as any[];
+
+    // Channel breakdown
+    const channelBreakdown = db
+      .prepare(`
+        SELECT
+          channel,
+          COUNT(*) as campaign_count,
+          COALESCE(SUM(recipient_count), 0) as total_sent,
+          COALESCE(SUM(delivered_count), 0) as total_delivered
+        FROM marketing_campaigns
+        WHERE bakery_id = ? AND (status = 'sent' OR status = 'completed')
+        GROUP BY channel
+      `)
+      .all(bakeryId) as any[];
+
+    const deliveryRate =
+      deliveryMetrics.total_sent > 0
+        ? parseFloat(((deliveryMetrics.delivered / deliveryMetrics.total_sent) * 100).toFixed(2))
+        : 0;
+
+    const readRate =
+      deliveryMetrics.delivered > 0
+        ? parseFloat(((deliveryMetrics.read / deliveryMetrics.delivered) * 100).toFixed(2))
+        : 0;
+
+    res.json({
+      overview: {
+        totalCampaigns: campaignStats.total || 0,
+        activeCampaigns: campaignStats.active || 0,
+        completedCampaigns: campaignStats.completed || 0,
+      },
+      deliveryMetrics: {
+        totalSent: deliveryMetrics.total_sent || 0,
+        delivered: deliveryMetrics.delivered || 0,
+        read: deliveryMetrics.read || 0,
+        deliveryRate,
+        readRate,
+      },
+      performanceByType,
+      performanceOverTime,
+      channelBreakdown,
+    });
+  } catch (err: any) {
+    console.error('Analytics error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

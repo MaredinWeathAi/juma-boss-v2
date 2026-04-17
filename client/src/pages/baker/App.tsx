@@ -15,6 +15,7 @@ import Subscription from './Subscription';
 import Production from './Production';
 import RecipeCost from './RecipeCost';
 import Profitability from './Profitability';
+import Marketing from './Marketing';
 
 export default function BakerApp() {
   return (
@@ -34,6 +35,7 @@ export default function BakerApp() {
         <Route path="/production" element={<Production />} />
         <Route path="/recipe-costing" element={<RecipeCost />} />
         <Route path="/profitability" element={<Profitability />} />
+        <Route path="/marketing" element={<Marketing />} />
       </Routes>
     </BakerLayout>
   );

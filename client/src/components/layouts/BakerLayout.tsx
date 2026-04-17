@@ -17,6 +17,7 @@ import {
   Calculator,
   HelpCircle,
   TrendingUp,
+  Megaphone,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -57,6 +58,12 @@ const BakerLayout = ({ children }: { children: React.ReactNode }) => {
         { label: 'Estoque', path: '/app/inventory', icon: <Boxes size={20} /> },
         { label: 'Custo de Receitas', path: '/app/recipe-costing', icon: <Calculator size={20} /> },
         { label: 'Pagamentos', path: '/app/payments', icon: <CreditCard size={20} /> },
+      ],
+    },
+    {
+      title: 'Marketing',
+      items: [
+        { label: 'Campanhas', path: '/app/marketing', icon: <Megaphone size={20} /> },
       ],
     },
     {
