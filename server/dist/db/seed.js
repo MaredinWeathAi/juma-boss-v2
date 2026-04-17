@@ -1,9 +1,9 @@
 import bcryptjs from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { getDB, initDB } from './index.js';
-const db = getDB();
 export function seedDatabase() {
     initDB();
+    const db = getDB();
     // Clear existing data (disable FK checks to avoid ordering issues)
     db.exec(`PRAGMA foreign_keys = OFF;`);
     db.exec(`
@@ -789,6 +789,7 @@ export function seedDatabase() {
 }
 // Run seed if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
+    initDB();
     seedDatabase();
 }
 //# sourceMappingURL=seed.js.map

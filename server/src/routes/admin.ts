@@ -1461,4 +1461,555 @@ router.get('/cost-intelligence', (req: AuthRequest, res: any) => {
   }
 });
 
+// GET /admin/bi-dashboard - Comprehensive Business Intelligence Endpoint
+router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
+  try {
+    // Helper: Get current and last month strings
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const lastMonthDate = new Date();
+    lastMonthDate.setMonth(lastMonthDate.getMonth() - 1);
+    const lastMonthStr = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
+
+    // ============================================
+    // 1. PLATFORM HEALTH METRICS
+    // ============================================
+
+    // Total revenue all time
+    const totalRevenueAllTime = db.prepare(`
+      SELECT COALESCE(SUM(total), 0) as value FROM orders
+    `).get() as any;
+
+    // This month revenue
+    const thisMonthRevenue = db.prepare(`
+      SELECT COALESCE(SUM(total), 0) as value
+      FROM orders
+      WHERE strftime('%Y-%m', created_at) = ?
+    `).get(currentMonthStr) as any;
+
+    // Last month revenue
+    const lastMonthRevenue = db.prepare(`
+      SELECT COALESCE(SUM(total), 0) as value
+      FROM orders
+      WHERE strftime('%Y-%m', created_at) = ?
+    `).get(lastMonthStr) as any;
+
+    const momRevenueGrowth = lastMonthRevenue.value > 0
+      ? (((thisMonthRevenue.value - lastMonthRevenue.value) / lastMonthRevenue.value) * 100)
+      : 0;
+
+    // Total orders
+    const totalOrdersAllTime = db.prepare(`
+      SELECT COUNT(*) as count FROM orders
+    `).get() as any;
+
+    // This month orders
+    const thisMonthOrders = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM orders
+      WHERE strftime('%Y-%m', created_at) = ?
+    `).get(currentMonthStr) as any;
+
+    // Last month orders
+    const lastMonthOrders = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM orders
+      WHERE strftime('%Y-%m', created_at) = ?
+    `).get(lastMonthStr) as any;
+
+    const momOrdersGrowth = lastMonthOrders.count > 0
+      ? (((thisMonthOrders.count - lastMonthOrders.count) / lastMonthOrders.count) * 100)
+      : 0;
+
+    // Average order value current month
+    const aovCurrentMonth = thisMonthOrders.count > 0
+      ? (thisMonthRevenue.value / thisMonthOrders.count)
+      : 0;
+
+    // Average order value last month
+    const aovLastMonth = lastMonthOrders.count > 0
+      ? (lastMonthRevenue.value / lastMonthOrders.count)
+      : 0;
+
+    // Active bakers
+    const activeBakers = db.prepare(`
+      SELECT COUNT(*) as count FROM bakeries WHERE status = 'active'
+    `).get() as any;
+
+    // Total customers
+    const totalCustomers = db.prepare(`
+      SELECT COUNT(*) as count FROM customers
+    `).get() as any;
+
+    // Churn rate: bakers that went from active to churned/suspended
+    const recentlyChurned = db.prepare(`
+      SELECT COUNT(*) as count FROM bakeries WHERE status IN ('churned', 'suspended')
+    `).get() as any;
+    const totalBakeries = db.prepare(`
+      SELECT COUNT(*) as count FROM bakeries
+    `).get() as any;
+    const churnRate = totalBakeries.count > 0
+      ? (recentlyChurned.count / totalBakeries.count) * 100
+      : 0;
+
+    const platformHealth = {
+      revenue: {
+        allTime: totalRevenueAllTime.value,
+        thisMonth: thisMonthRevenue.value,
+        lastMonth: lastMonthRevenue.value,
+        momGrowthPct: parseFloat(momRevenueGrowth.toFixed(2)),
+      },
+      orders: {
+        allTime: totalOrdersAllTime.count,
+        thisMonth: thisMonthOrders.count,
+        lastMonth: lastMonthOrders.count,
+        momGrowthPct: parseFloat(momOrdersGrowth.toFixed(2)),
+      },
+      averageOrderValue: {
+        currentMonth: parseFloat(aovCurrentMonth.toFixed(2)),
+        lastMonth: parseFloat(aovLastMonth.toFixed(2)),
+      },
+      activeBakers: activeBakers.count,
+      totalCustomers: totalCustomers.count,
+      churnRate: parseFloat(churnRate.toFixed(2)),
+    };
+
+    // ============================================
+    // 2. REVENUE ANALYTICS (12 MONTHS)
+    // ============================================
+    const revenueAnalytics: any[] = [];
+    let cumulativeRevenue = 0;
+    let cumulativeOrders = 0;
+
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const monthStr = `${year}-${month}`;
+
+      const monthData = db.prepare(`
+        SELECT
+          COALESCE(SUM(o.total), 0) as revenue,
+          COUNT(o.id) as orders,
+          COUNT(DISTINCT CASE WHEN strftime('%Y-%m', b.created_at) = ? THEN b.id END) as new_bakers,
+          CASE WHEN COUNT(o.id) > 0 THEN COALESCE(SUM(o.total), 0) / COUNT(o.id) ELSE 0 END as avg_order_value
+        FROM orders o
+        JOIN bakeries b ON o.bakery_id = b.id
+        WHERE strftime('%Y-%m', o.created_at) = ?
+      `).get(monthStr, monthStr) as any;
+
+      cumulativeRevenue += monthData.revenue;
+      cumulativeOrders += monthData.orders;
+
+      revenueAnalytics.push({
+        month: monthStr,
+        revenue: parseFloat(monthData.revenue.toFixed(2)),
+        orders: monthData.orders,
+        newBakers: monthData.new_bakers,
+        avgOrderValue: parseFloat(monthData.avg_order_value.toFixed(2)),
+        cumulativeRevenue: parseFloat(cumulativeRevenue.toFixed(2)),
+        cumulativeOrders,
+      });
+    }
+
+    // ============================================
+    // 3. BAKER PERFORMANCE RANKINGS
+    // ============================================
+
+    // Top 10 bakers by revenue
+    const topBakers = db.prepare(`
+      SELECT
+        u.name as baker_name,
+        b.name as bakery_name,
+        b.tier,
+        COUNT(o.id) as total_orders,
+        COALESCE(SUM(o.total), 0) as total_revenue,
+        CASE WHEN COUNT(o.id) > 0 THEN COALESCE(SUM(o.total), 0) / COUNT(o.id) ELSE 0 END as avg_order_value,
+        (SELECT COUNT(*) FROM customers WHERE bakery_id = b.id) as total_customers,
+        (SELECT COUNT(*) FROM products WHERE bakery_id = b.id) as total_products,
+        (SELECT COUNT(*) FROM recipe_items WHERE product_id IN (SELECT id FROM products WHERE bakery_id = b.id)) as recipe_items,
+        (SELECT COUNT(*) FROM products WHERE bakery_id = b.id) as total_products_2
+      FROM bakeries b
+      JOIN users u ON b.owner_id = u.id
+      LEFT JOIN orders o ON b.id = o.bakery_id
+      GROUP BY b.id
+      ORDER BY total_revenue DESC
+      LIMIT 10
+    `).all() as any[];
+
+    const topBakersFormatted = topBakers.map((b: any) => ({
+      bakerName: b.baker_name,
+      bakeryName: b.bakery_name,
+      tier: b.tier,
+      totalOrders: b.total_orders,
+      totalRevenue: parseFloat(b.total_revenue.toFixed(2)),
+      avgOrderValue: parseFloat(b.avg_order_value.toFixed(2)),
+      totalCustomers: b.total_customers,
+      totalProducts: b.total_products,
+      recipeAdoptionPct: b.total_products_2 > 0 ? parseFloat((b.recipe_items / b.total_products_2 * 100).toFixed(2)) : 0,
+    }));
+
+    // Bottom 5 bakers by revenue (churn risk)
+    const bottomBakers = db.prepare(`
+      SELECT
+        u.name as baker_name,
+        b.name as bakery_name,
+        b.tier,
+        COUNT(o.id) as total_orders,
+        COALESCE(SUM(o.total), 0) as total_revenue,
+        CASE WHEN COUNT(o.id) > 0 THEN COALESCE(SUM(o.total), 0) / COUNT(o.id) ELSE 0 END as avg_order_value,
+        (SELECT COUNT(*) FROM customers WHERE bakery_id = b.id) as total_customers,
+        (SELECT COUNT(*) FROM products WHERE bakery_id = b.id) as total_products,
+        (SELECT COUNT(*) FROM recipe_items WHERE product_id IN (SELECT id FROM products WHERE bakery_id = b.id)) as recipe_items,
+        (SELECT COUNT(*) FROM products WHERE bakery_id = b.id) as total_products_2
+      FROM bakeries b
+      JOIN users u ON b.owner_id = u.id
+      LEFT JOIN orders o ON b.id = o.bakery_id
+      WHERE b.status = 'active'
+      GROUP BY b.id
+      ORDER BY total_revenue ASC
+      LIMIT 5
+    `).all() as any[];
+
+    const bottomBakersFormatted = bottomBakers.map((b: any) => ({
+      bakerName: b.baker_name,
+      bakeryName: b.bakery_name,
+      tier: b.tier,
+      totalOrders: b.total_orders,
+      totalRevenue: parseFloat(b.total_revenue.toFixed(2)),
+      avgOrderValue: parseFloat(b.avg_order_value.toFixed(2)),
+      totalCustomers: b.total_customers,
+      totalProducts: b.total_products,
+      recipeAdoptionPct: b.total_products_2 > 0 ? parseFloat((b.recipe_items / b.total_products_2 * 100).toFixed(2)) : 0,
+    }));
+
+    // Most active bakers (by order count this month)
+    const mostActiveBakers = db.prepare(`
+      SELECT
+        u.name as baker_name,
+        b.name as bakery_name,
+        COUNT(o.id) as order_count
+      FROM bakeries b
+      JOIN users u ON b.owner_id = u.id
+      LEFT JOIN orders o ON b.id = o.bakery_id
+        AND strftime('%Y-%m', o.created_at) = ?
+      WHERE b.status = 'active'
+      GROUP BY b.id
+      ORDER BY order_count DESC
+      LIMIT 10
+    `).all(currentMonthStr) as any[];
+
+    const bakerPerformance = {
+      topByRevenue: topBakersFormatted,
+      churnRiskBottom5: bottomBakersFormatted,
+      mostActiveThisMonth: mostActiveBakers,
+    };
+
+    // ============================================
+    // 4. COHORT ANALYSIS
+    // ============================================
+    const cohortAnalysis: any[] = [];
+
+    for (let i = 11; i >= 0; i--) {
+      const cohortDate = new Date();
+      cohortDate.setMonth(cohortDate.getMonth() - i);
+      const cohortYear = cohortDate.getFullYear();
+      const cohortMonth = String(cohortDate.getMonth() + 1).padStart(2, '0');
+      const cohortStr = `${cohortYear}-${cohortMonth}`;
+
+      const cohortBakers = db.prepare(`
+        SELECT COUNT(*) as count FROM bakeries
+        WHERE strftime('%Y-%m', created_at) = ?
+      `).get(cohortStr) as any;
+
+      const activeCohortBakers = db.prepare(`
+        SELECT COUNT(*) as count FROM bakeries
+        WHERE strftime('%Y-%m', created_at) = ? AND status = 'active'
+      `).get(cohortStr) as any;
+
+      const retentionPct = cohortBakers.count > 0
+        ? (activeCohortBakers.count / cohortBakers.count) * 100
+        : 0;
+
+      const cohortRevenue = db.prepare(`
+        SELECT COALESCE(SUM(o.total), 0) as total FROM orders o
+        JOIN bakeries b ON o.bakery_id = b.id
+        WHERE strftime('%Y-%m', b.created_at) = ?
+      `).get(cohortStr) as any;
+
+      const avgRevenuePerBaker = cohortBakers.count > 0
+        ? cohortRevenue.total / cohortBakers.count
+        : 0;
+
+      cohortAnalysis.push({
+        cohortMonth: cohortStr,
+        bakerCount: cohortBakers.count,
+        activeCount: activeCohortBakers.count,
+        retentionPct: parseFloat(retentionPct.toFixed(2)),
+        totalRevenue: parseFloat(cohortRevenue.total.toFixed(2)),
+        avgRevenuePerBaker: parseFloat(avgRevenuePerBaker.toFixed(2)),
+      });
+    }
+
+    // ============================================
+    // 5. PRODUCT INTELLIGENCE
+    // ============================================
+
+    // Top 20 products by quantity sold
+    const topProducts = db.prepare(`
+      SELECT
+        p.name as product_name,
+        p.category,
+        b.name as bakery_name,
+        COALESCE(SUM(oi.quantity), 0) as quantity_sold,
+        COALESCE(SUM(oi.quantity * oi.unit_price), 0) as revenue,
+        CASE WHEN SUM(oi.quantity) > 0 THEN COALESCE(SUM(oi.quantity * oi.unit_price), 0) / SUM(oi.quantity) ELSE 0 END as avg_price
+      FROM products p
+      JOIN bakeries b ON p.bakery_id = b.id
+      LEFT JOIN order_items oi ON p.id = oi.product_id
+      GROUP BY p.id
+      ORDER BY quantity_sold DESC
+      LIMIT 20
+    `).all() as any[];
+
+    const topProductsFormatted = topProducts.map((p: any) => ({
+      productName: p.product_name,
+      category: p.category,
+      bakeryName: p.bakery_name,
+      quantitySold: p.quantity_sold,
+      revenue: parseFloat(p.revenue.toFixed(2)),
+      avgPrice: parseFloat(p.avg_price.toFixed(2)),
+    }));
+
+    // Category breakdown
+    const categoryBreakdown = db.prepare(`
+      SELECT
+        p.category,
+        COALESCE(SUM(oi.quantity * oi.unit_price), 0) as total_revenue,
+        COALESCE(SUM(oi.quantity), 0) as total_quantity,
+        COUNT(DISTINCT p.id) as product_count,
+        CASE WHEN SUM(oi.quantity) > 0 THEN COALESCE(SUM(oi.quantity * oi.unit_price), 0) / SUM(oi.quantity) ELSE 0 END as avg_price,
+        CASE WHEN COUNT(DISTINCT p.id) > 0 THEN COALESCE(SUM(oi.quantity * oi.unit_price), 0) / COUNT(DISTINCT p.id) ELSE 0 END as avg_margin
+      FROM products p
+      LEFT JOIN order_items oi ON p.id = oi.product_id
+      WHERE p.category IS NOT NULL
+      GROUP BY p.category
+      ORDER BY total_revenue DESC
+    `).all() as any[];
+
+    const categoryBreakdownFormatted = categoryBreakdown.map((c: any) => ({
+      category: c.category,
+      totalRevenue: parseFloat(c.total_revenue.toFixed(2)),
+      totalQuantity: c.total_quantity,
+      productCount: c.product_count,
+      avgPrice: parseFloat(c.avg_price.toFixed(2)),
+      avgMargin: parseFloat(c.avg_margin.toFixed(2)),
+    }));
+
+    const productIntelligence = {
+      topProducts: topProductsFormatted,
+      categoryBreakdown: categoryBreakdownFormatted,
+    };
+
+    // ============================================
+    // 6. CUSTOMER INTELLIGENCE
+    // ============================================
+
+    const totalCustomersCount = db.prepare(`
+      SELECT COUNT(*) as count FROM customers
+    `).get() as any;
+
+    const activeBakersCount = db.prepare(`
+      SELECT COUNT(*) as count FROM bakeries WHERE status = 'active'
+    `).get() as any;
+
+    const avgCustomersPerBakery = activeBakersCount.count > 0
+      ? totalCustomersCount.count / activeBakersCount.count
+      : 0;
+
+    // Top 10 customers by total spent
+    const topCustomers = db.prepare(`
+      SELECT
+        c.name,
+        b.name as bakery_name,
+        COUNT(o.id) as total_orders,
+        COALESCE(SUM(o.total), 0) as total_spent
+      FROM customers c
+      JOIN bakeries b ON c.bakery_id = b.id
+      LEFT JOIN orders o ON c.id = o.customer_id
+      GROUP BY c.id
+      ORDER BY total_spent DESC
+      LIMIT 10
+    `).all() as any[];
+
+    const topCustomersFormatted = topCustomers.map((c: any) => ({
+      customerName: c.name,
+      bakeryName: c.bakery_name,
+      totalOrders: c.total_orders,
+      totalSpent: parseFloat(c.total_spent.toFixed(2)),
+    }));
+
+    // Customer concentration: % of revenue from top 10% of customers
+    const totalRevenueAll = db.prepare(`
+      SELECT COALESCE(SUM(total), 0) as total FROM orders
+    `).get() as any;
+
+    const topTenPercentCustomers = db.prepare(`
+      SELECT COALESCE(SUM(o.total), 0) as total
+      FROM (
+        SELECT c.id, SUM(o.total) as spent
+        FROM customers c
+        LEFT JOIN orders o ON c.id = o.customer_id
+        GROUP BY c.id
+        ORDER BY spent DESC
+        LIMIT (SELECT MAX(1, COUNT(*) / 10) FROM customers)
+      ) top10
+      LEFT JOIN orders o ON top10.id = o.customer_id
+    `).get() as any;
+
+    const customerConcentration = totalRevenueAll.total > 0
+      ? (topTenPercentCustomers.total / totalRevenueAll.total) * 100
+      : 0;
+
+    const customerIntelligence = {
+      totalCustomers: totalCustomersCount.count,
+      avgCustomersPerBakery: parseFloat(avgCustomersPerBakery.toFixed(2)),
+      topBySpent: topCustomersFormatted,
+      concentrationTop10Pct: parseFloat(customerConcentration.toFixed(2)),
+    };
+
+    // ============================================
+    // 7. OPERATIONAL METRICS
+    // ============================================
+
+    // Order status distribution
+    const orderStatusDist = db.prepare(`
+      SELECT
+        status,
+        COUNT(*) as count
+      FROM orders
+      GROUP BY status
+    `).all() as any[];
+
+    const totalOrdersCount = db.prepare(`
+      SELECT COUNT(*) as count FROM orders
+    `).get() as any;
+
+    const orderStatusFormatted = orderStatusDist.map((s: any) => ({
+      status: s.status,
+      count: s.count,
+      percentage: totalOrdersCount.count > 0 ? parseFloat((s.count / totalOrdersCount.count * 100).toFixed(2)) : 0,
+    }));
+
+    // Payment method breakdown
+    const paymentMethodDist = db.prepare(`
+      SELECT
+        COALESCE(method, 'unknown') as method,
+        COUNT(*) as count,
+        COALESCE(SUM(amount), 0) as total_amount
+      FROM payments
+      GROUP BY method
+    `).all() as any[];
+
+    const paymentMethodFormatted = paymentMethodDist.map((p: any) => ({
+      method: p.method,
+      count: p.count,
+      totalAmount: parseFloat(p.total_amount.toFixed(2)),
+    }));
+
+    // Average delivery time (created to delivered)
+    const avgDeliveryTime = db.prepare(`
+      SELECT
+        AVG((julianday(updated_at) - julianday(created_at)) * 24) as avg_hours
+      FROM orders
+      WHERE status = 'delivered'
+    `).get() as any;
+
+    const operationalMetrics = {
+      orderStatusDistribution: orderStatusFormatted,
+      paymentMethodBreakdown: paymentMethodFormatted,
+      avgDeliveryTimeHours: avgDeliveryTime.avg_hours ? parseFloat(avgDeliveryTime.avg_hours.toFixed(2)) : 0,
+    };
+
+    // ============================================
+    // 8. TIER INSIGHTS
+    // ============================================
+
+    const tierInsights: any[] = [];
+    const tiers = ['free', 'starter', 'pro', 'enterprise'];
+
+    for (const tier of tiers) {
+      const tierBakeries = db.prepare(`
+        SELECT COUNT(*) as count FROM bakeries WHERE tier = ?
+      `).get(tier) as any;
+
+      const tierRevenue = db.prepare(`
+        SELECT COALESCE(SUM(o.total), 0) as total FROM orders o
+        JOIN bakeries b ON o.bakery_id = b.id
+        WHERE b.tier = ?
+      `).get(tier) as any;
+
+      const avgRevenuePerTierBaker = tierBakeries.count > 0
+        ? tierRevenue.total / tierBakeries.count
+        : 0;
+
+      const tierOrders = db.prepare(`
+        SELECT COUNT(*) as count FROM orders o
+        JOIN bakeries b ON o.bakery_id = b.id
+        WHERE b.tier = ?
+      `).get(tier) as any;
+
+      const avgOrdersPerTierBaker = tierBakeries.count > 0
+        ? tierOrders.count / tierBakeries.count
+        : 0;
+
+      const tierProducts = db.prepare(`
+        SELECT AVG(pc.count) as avg_products FROM (
+          SELECT b.id, COUNT(*) as count FROM products
+          JOIN bakeries b ON b.id = products.bakery_id
+          WHERE b.tier = ?
+          GROUP BY b.id
+        ) pc
+      `).get(tier) as any;
+
+      const tierCustomers = db.prepare(`
+        SELECT AVG(cc.count) as avg_customers FROM (
+          SELECT b.id, COUNT(*) as count FROM customers
+          JOIN bakeries b ON b.id = customers.bakery_id
+          WHERE b.tier = ?
+          GROUP BY b.id
+        ) cc
+      `).get(tier) as any;
+
+      tierInsights.push({
+        tier,
+        bakerCount: tierBakeries.count,
+        avgRevenuePerBaker: parseFloat(avgRevenuePerTierBaker.toFixed(2)),
+        avgOrdersPerBaker: parseFloat(avgOrdersPerTierBaker.toFixed(2)),
+        avgProductsPerBaker: tierProducts.avg_products ? parseFloat(tierProducts.avg_products.toFixed(2)) : 0,
+        avgCustomersPerBaker: tierCustomers.avg_customers ? parseFloat(tierCustomers.avg_customers.toFixed(2)) : 0,
+      });
+    }
+
+    // ============================================
+    // COMPILE FINAL RESPONSE
+    // ============================================
+
+    res.json({
+      platformHealth,
+      revenueAnalytics,
+      bakerPerformance,
+      cohortAnalysis,
+      productIntelligence,
+      customerIntelligence,
+      operationalMetrics,
+      tierInsights,
+    });
+  } catch (err: any) {
+    console.error('BI Dashboard error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

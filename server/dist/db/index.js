@@ -1,14 +1,38 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.join(__dirname, '../../juma-boss.db');
 let db;
 export function getDB() {
     if (!db) {
-        db = new Database(dbPath);
-        db.pragma('journal_mode = WAL');
-        db.pragma('foreign_keys = ON');
+        try {
+            db = new Database(dbPath);
+            db.pragma('journal_mode = WAL');
+            db.pragma('foreign_keys = ON');
+        }
+        catch (err) {
+            // If DB is corrupt, delete it and create fresh
+            if (err.code === 'SQLITE_CORRUPT' || err.message?.includes('malformed')) {
+                console.warn('Corrupt database detected — deleting and recreating...');
+                try {
+                    if (fs.existsSync(dbPath))
+                        fs.unlinkSync(dbPath);
+                    if (fs.existsSync(dbPath + '-wal'))
+                        fs.unlinkSync(dbPath + '-wal');
+                    if (fs.existsSync(dbPath + '-shm'))
+                        fs.unlinkSync(dbPath + '-shm');
+                }
+                catch { /* ignore cleanup errors */ }
+                db = new Database(dbPath);
+                db.pragma('journal_mode = WAL');
+                db.pragma('foreign_keys = ON');
+            }
+            else {
+                throw err;
+            }
+        }
     }
     return db;
 }
