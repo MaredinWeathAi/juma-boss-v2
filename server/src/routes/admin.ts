@@ -35,8 +35,8 @@ router.get('/dashboard', (req: AuthRequest, res: any) => {
     const mrr = subscriptionsData.mrr || 0;
     const arr = mrr * 12;
 
-    // Total orders and revenue across all bakeries
-    const orderData = db.prepare(`SELECT COUNT(*) as totalOrders, SUM(total) as totalRevenue FROM orders`).get() as any;
+    // Total orders and revenue across all bakeries (exclude cancelled)
+    const orderData = db.prepare(`SELECT COUNT(*) as totalOrders, COALESCE(SUM(total), 0) as totalRevenue FROM orders WHERE status != 'cancelled'`).get() as any;
 
     // Total customers
     const customerData = db.prepare('SELECT COUNT(*) as count FROM customers').get() as any;
@@ -87,6 +87,7 @@ router.get('/dashboard', (req: AuthRequest, res: any) => {
         FROM bakeries b
         LEFT JOIN orders o ON b.id = o.bakery_id
           AND strftime('%Y-%m', o.created_at) = ?
+          AND o.status != 'cancelled'
         WHERE strftime('%Y-%m', b.created_at) <= ?
       `).get(monthStr, monthStr) as any;
 
@@ -1475,46 +1476,46 @@ router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
     // 1. PLATFORM HEALTH METRICS
     // ============================================
 
-    // Total revenue all time
+    // Total revenue all time (exclude cancelled)
     const totalRevenueAllTime = db.prepare(`
-      SELECT COALESCE(SUM(total), 0) as value FROM orders
+      SELECT COALESCE(SUM(total), 0) as value FROM orders WHERE status != 'cancelled'
     `).get() as any;
 
-    // This month revenue
+    // This month revenue (exclude cancelled)
     const thisMonthRevenue = db.prepare(`
       SELECT COALESCE(SUM(total), 0) as value
       FROM orders
-      WHERE strftime('%Y-%m', created_at) = ?
+      WHERE strftime('%Y-%m', created_at) = ? AND status != 'cancelled'
     `).get(currentMonthStr) as any;
 
-    // Last month revenue
+    // Last month revenue (exclude cancelled)
     const lastMonthRevenue = db.prepare(`
       SELECT COALESCE(SUM(total), 0) as value
       FROM orders
-      WHERE strftime('%Y-%m', created_at) = ?
+      WHERE strftime('%Y-%m', created_at) = ? AND status != 'cancelled'
     `).get(lastMonthStr) as any;
 
     const momRevenueGrowth = lastMonthRevenue.value > 0
       ? (((thisMonthRevenue.value - lastMonthRevenue.value) / lastMonthRevenue.value) * 100)
       : 0;
 
-    // Total orders
+    // Total orders (exclude cancelled)
     const totalOrdersAllTime = db.prepare(`
-      SELECT COUNT(*) as count FROM orders
+      SELECT COUNT(*) as count FROM orders WHERE status != 'cancelled'
     `).get() as any;
 
-    // This month orders
+    // This month orders (exclude cancelled)
     const thisMonthOrders = db.prepare(`
       SELECT COUNT(*) as count
       FROM orders
-      WHERE strftime('%Y-%m', created_at) = ?
+      WHERE strftime('%Y-%m', created_at) = ? AND status != 'cancelled'
     `).get(currentMonthStr) as any;
 
-    // Last month orders
+    // Last month orders (exclude cancelled)
     const lastMonthOrders = db.prepare(`
       SELECT COUNT(*) as count
       FROM orders
-      WHERE strftime('%Y-%m', created_at) = ?
+      WHERE strftime('%Y-%m', created_at) = ? AND status != 'cancelled'
     `).get(lastMonthStr) as any;
 
     const momOrdersGrowth = lastMonthOrders.count > 0
@@ -1592,12 +1593,16 @@ router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
         SELECT
           COALESCE(SUM(o.total), 0) as revenue,
           COUNT(o.id) as orders,
-          COUNT(DISTINCT CASE WHEN strftime('%Y-%m', b.created_at) = ? THEN b.id END) as new_bakers,
           CASE WHEN COUNT(o.id) > 0 THEN COALESCE(SUM(o.total), 0) / COUNT(o.id) ELSE 0 END as avg_order_value
         FROM orders o
-        JOIN bakeries b ON o.bakery_id = b.id
-        WHERE strftime('%Y-%m', o.created_at) = ?
-      `).get(monthStr, monthStr) as any;
+        WHERE strftime('%Y-%m', o.created_at) = ? AND o.status != 'cancelled'
+      `).get(monthStr) as any;
+
+      // New bakers that joined this month (separate query for clarity)
+      const newBakersData = db.prepare(`
+        SELECT COUNT(*) as count FROM bakeries
+        WHERE strftime('%Y-%m', created_at) = ?
+      `).get(monthStr) as any;
 
       cumulativeRevenue += monthData.revenue;
       cumulativeOrders += monthData.orders;
@@ -1606,7 +1611,7 @@ router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
         month: monthStr,
         revenue: parseFloat(monthData.revenue.toFixed(2)),
         orders: monthData.orders,
-        newBakers: monthData.new_bakers,
+        newBakers: newBakersData.count,
         avgOrderValue: parseFloat(monthData.avg_order_value.toFixed(2)),
         cumulativeRevenue: parseFloat(cumulativeRevenue.toFixed(2)),
         cumulativeOrders,
@@ -1628,7 +1633,7 @@ router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
         CASE WHEN COUNT(o.id) > 0 THEN COALESCE(SUM(o.total), 0) / COUNT(o.id) ELSE 0 END as avg_order_value,
         (SELECT COUNT(*) FROM customers WHERE bakery_id = b.id) as total_customers,
         (SELECT COUNT(*) FROM products WHERE bakery_id = b.id) as total_products,
-        (SELECT COUNT(*) FROM recipe_items WHERE product_id IN (SELECT id FROM products WHERE bakery_id = b.id)) as recipe_items,
+        (SELECT COUNT(DISTINCT product_id) FROM recipe_items WHERE product_id IN (SELECT id FROM products WHERE bakery_id = b.id)) as recipe_items,
         (SELECT COUNT(*) FROM products WHERE bakery_id = b.id) as total_products_2
       FROM bakeries b
       JOIN users u ON b.owner_id = u.id
@@ -1662,7 +1667,7 @@ router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
         CASE WHEN COUNT(o.id) > 0 THEN COALESCE(SUM(o.total), 0) / COUNT(o.id) ELSE 0 END as avg_order_value,
         (SELECT COUNT(*) FROM customers WHERE bakery_id = b.id) as total_customers,
         (SELECT COUNT(*) FROM products WHERE bakery_id = b.id) as total_products,
-        (SELECT COUNT(*) FROM recipe_items WHERE product_id IN (SELECT id FROM products WHERE bakery_id = b.id)) as recipe_items,
+        (SELECT COUNT(DISTINCT product_id) FROM recipe_items WHERE product_id IN (SELECT id FROM products WHERE bakery_id = b.id)) as recipe_items,
         (SELECT COUNT(*) FROM products WHERE bakery_id = b.id) as total_products_2
       FROM bakeries b
       JOIN users u ON b.owner_id = u.id
@@ -1691,7 +1696,8 @@ router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
       SELECT
         u.name as baker_name,
         b.name as bakery_name,
-        COUNT(o.id) as order_count
+        COUNT(o.id) as order_count,
+        COALESCE(SUM(o.total), 0) as month_revenue
       FROM bakeries b
       JOIN users u ON b.owner_id = u.id
       LEFT JOIN orders o ON b.id = o.bakery_id
@@ -1706,7 +1712,7 @@ router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
       name: b.baker_name,
       bakery_name: b.bakery_name,
       ordersThisMonth: b.order_count,
-      revenueThisMonth: 0,
+      revenueThisMonth: parseFloat((b.month_revenue || 0).toFixed(2)),
     }));
 
     const bakerPerformance = {
@@ -1744,7 +1750,7 @@ router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
       const cohortRevenue = db.prepare(`
         SELECT COALESCE(SUM(o.total), 0) as total FROM orders o
         JOIN bakeries b ON o.bakery_id = b.id
-        WHERE strftime('%Y-%m', b.created_at) = ?
+        WHERE strftime('%Y-%m', b.created_at) = ? AND o.status != 'cancelled'
       `).get(cohortStr) as any;
 
       const avgRevenuePerBaker = cohortBakers.count > 0
@@ -1799,7 +1805,9 @@ router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
         COALESCE(SUM(oi.quantity), 0) as total_quantity,
         COUNT(DISTINCT p.id) as product_count,
         CASE WHEN SUM(oi.quantity) > 0 THEN COALESCE(SUM(oi.quantity * oi.unit_price), 0) / SUM(oi.quantity) ELSE 0 END as avg_price,
-        CASE WHEN COUNT(DISTINCT p.id) > 0 THEN COALESCE(SUM(oi.quantity * oi.unit_price), 0) / COUNT(DISTINCT p.id) ELSE 0 END as avg_margin
+        CASE WHEN SUM(oi.quantity * oi.unit_price) > 0
+          THEN (SUM(oi.quantity * oi.unit_price) - COALESCE(SUM(oi.quantity * p.cost), 0)) / SUM(oi.quantity * oi.unit_price) * 100
+          ELSE 0 END as avg_margin
       FROM products p
       LEFT JOIN order_items oi ON p.id = oi.product_id
       WHERE p.category IS NOT NULL
@@ -1861,7 +1869,7 @@ router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
 
     // Customer concentration: % of revenue from top 10% of customers
     const totalRevenueAll = db.prepare(`
-      SELECT COALESCE(SUM(total), 0) as total FROM orders
+      SELECT COALESCE(SUM(total), 0) as total FROM orders WHERE status != 'cancelled'
     `).get() as any;
 
     const topTenPercentCustomers = db.prepare(`
@@ -1956,7 +1964,7 @@ router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
       const tierRevenue = db.prepare(`
         SELECT COALESCE(SUM(o.total), 0) as total FROM orders o
         JOIN bakeries b ON o.bakery_id = b.id
-        WHERE b.tier = ?
+        WHERE b.tier = ? AND o.status != 'cancelled'
       `).get(tier) as any;
 
       const avgRevenuePerTierBaker = tierBakeries.count > 0
@@ -1966,7 +1974,7 @@ router.get('/bi-dashboard', (req: AuthRequest, res: any) => {
       const tierOrders = db.prepare(`
         SELECT COUNT(*) as count FROM orders o
         JOIN bakeries b ON o.bakery_id = b.id
-        WHERE b.tier = ?
+        WHERE b.tier = ? AND o.status != 'cancelled'
       `).get(tier) as any;
 
       const avgOrdersPerTierBaker = tierBakeries.count > 0

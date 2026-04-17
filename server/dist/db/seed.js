@@ -522,20 +522,23 @@ export function seedDatabase() {
             // Phone generation
             const phoneArea = ['11', '21', '31', '41', '51', '61', '71', '81', '85', '27'][bakerIndex % 10];
             const phoneNum = `+55${phoneArea}9${Math.floor(Math.random() * 90000000 + 10000000)}`;
-            // Create user
-            insertUserStmt.run(userId, bakerEmail, bakerPassword, bakerName, 'baker', phoneNum, now, now);
-            // Create bakery
-            insertBakeryStmt.run(bakeryId, userId, bakeryName, slug, phoneNum, tierTarget.tier, 'active', now, now);
+            // Calculate subscription/creation dates — stagger start dates for realistic cohort data
+            const monthsAgo = Math.floor(Math.random() * 10) + 2;
+            const startDate = new Date();
+            startDate.setMonth(startDate.getMonth() - monthsAgo);
+            // Add random day offset within the month for more natural distribution
+            startDate.setDate(Math.floor(Math.random() * 28) + 1);
+            const bakerCreatedAt = startDate.toISOString();
+            // Create user (created_at = staggered start date, not now)
+            insertUserStmt.run(userId, bakerEmail, bakerPassword, bakerName, 'baker', phoneNum, bakerCreatedAt, bakerCreatedAt);
+            // Create bakery (created_at = staggered start date, not now)
+            insertBakeryStmt.run(bakeryId, userId, bakeryName, slug, phoneNum, tierTarget.tier, 'active', bakerCreatedAt, bakerCreatedAt);
             // Create payment method
             const paymentDetails = {
                 pix_key: `cpf-${Math.floor(Math.random() * 100000000)}`,
                 type: 'pix',
             };
-            insertPaymentMethodStmt.run(paymentMethodId, bakeryId, 'pix', 'PIX - CPF', 1, JSON.stringify(paymentDetails), now);
-            // Calculate subscription dates — stagger start dates
-            const monthsAgo = Math.floor(Math.random() * 10) + 2;
-            const startDate = new Date();
-            startDate.setMonth(startDate.getMonth() - monthsAgo);
+            insertPaymentMethodStmt.run(paymentMethodId, bakeryId, 'pix', 'PIX - CPF', 1, JSON.stringify(paymentDetails), bakerCreatedAt);
             const nextBillingDate = new Date();
             nextBillingDate.setDate(nextBillingDate.getDate() + Math.floor(Math.random() * 25) + 3);
             const subStatus = bakerIndex % 5 === 0 && tierTarget.tier !== 'free' ? 'trialing' : 'active';
