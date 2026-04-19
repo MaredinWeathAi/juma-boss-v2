@@ -55,7 +55,7 @@ router.get('/dashboard', (req, res) => {
       ORDER BY o.created_at DESC
       LIMIT 10
     `).all();
-        // Growth data (last 12 months)
+        // Growth data (last 12 months) — per-month revenue/orders matching BI revenueAnalytics
         const growthData = [];
         for (let i = 11; i >= 0; i--) {
             const date = new Date();
@@ -63,24 +63,41 @@ router.get('/dashboard', (req, res) => {
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const monthStr = `${year}-${month}`;
-            const stats = db.prepare(`
+            // Cumulative baker count (created up to this month)
+            const bakerCount = db.prepare(`
+        SELECT COUNT(*) as count FROM bakeries WHERE strftime('%Y-%m', created_at) <= ?
+      `).get(monthStr);
+            // Per-month orders/revenue (all bakeries, exclude cancelled)
+            const monthOrders = db.prepare(`
         SELECT
-          COUNT(DISTINCT b.id) as bakers,
-          COUNT(o.id) as orders,
-          COALESCE(SUM(o.total), 0) as revenue
-        FROM bakeries b
-        LEFT JOIN orders o ON b.id = o.bakery_id
-          AND strftime('%Y-%m', o.created_at) = ?
-          AND o.status != 'cancelled'
-        WHERE strftime('%Y-%m', b.created_at) <= ?
-      `).get(monthStr, monthStr);
+          COUNT(*) as orders,
+          COALESCE(SUM(total), 0) as revenue
+        FROM orders
+        WHERE strftime('%Y-%m', created_at) = ? AND status != 'cancelled'
+      `).get(monthStr);
             growthData.push({
                 month: monthStr,
-                bakers: stats.bakers || 0,
-                orders: stats.orders || 0,
-                revenue: stats.revenue || 0,
+                bakers: bakerCount.count || 0,
+                orders: monthOrders.orders || 0,
+                revenue: monthOrders.revenue || 0,
             });
         }
+        // Top bakers by revenue
+        const topBakers = db.prepare(`
+      SELECT
+        u.name as baker_name,
+        b.name as bakery_name,
+        b.tier,
+        COUNT(o.id) as total_orders,
+        COALESCE(SUM(o.total), 0) as total_revenue
+      FROM bakeries b
+      JOIN users u ON b.owner_id = u.id
+      LEFT JOIN orders o ON b.id = o.bakery_id AND o.status != 'cancelled'
+      WHERE b.status = 'active'
+      GROUP BY b.id
+      ORDER BY total_revenue DESC
+      LIMIT 10
+    `).all();
         res.json({
             totalBakers: totalBakers.count,
             activeBakers: activeBakers.count,
@@ -93,6 +110,13 @@ router.get('/dashboard', (req, res) => {
             tierBreakdown,
             recentActivity,
             growthData,
+            topBakers: topBakers.map((b) => ({
+                name: b.baker_name,
+                bakeryName: b.bakery_name,
+                tier: b.tier,
+                totalOrders: b.total_orders,
+                totalRevenue: parseFloat(b.total_revenue.toFixed(2)),
+            })),
         });
     }
     catch (err) {
@@ -114,8 +138,8 @@ router.get('/clients', (req, res) => {
         u.id, u.email, u.name, u.phone, u.created_at,
         b.id as bakery_id, b.name as bakery_name, b.slug, b.status,
         s.tier, s.status as subscription_status,
-        (SELECT COUNT(*) FROM orders WHERE bakery_id = b.id) as total_orders,
-        (SELECT COALESCE(SUM(total), 0) FROM orders WHERE bakery_id = b.id) as total_revenue,
+        (SELECT COUNT(*) FROM orders WHERE bakery_id = b.id AND status != 'cancelled') as total_orders,
+        (SELECT COALESCE(SUM(total), 0) FROM orders WHERE bakery_id = b.id AND status != 'cancelled') as total_revenue,
         (SELECT COUNT(*) FROM products WHERE bakery_id = b.id) as total_products,
         (SELECT COUNT(*) FROM customers WHERE bakery_id = b.id) as total_customers,
         (SELECT COUNT(*) FROM employees WHERE bakery_id = b.id) as total_employees
@@ -1342,7 +1366,7 @@ router.get('/bi-dashboard', (req, res) => {
         // ============================================
         // 3. BAKER PERFORMANCE RANKINGS
         // ============================================
-        // Top 10 bakers by revenue
+        // Top 10 bakers by revenue (exclude cancelled orders)
         const topBakers = db.prepare(`
       SELECT
         u.name as baker_name,
@@ -1357,7 +1381,7 @@ router.get('/bi-dashboard', (req, res) => {
         (SELECT COUNT(*) FROM products WHERE bakery_id = b.id) as total_products_2
       FROM bakeries b
       JOIN users u ON b.owner_id = u.id
-      LEFT JOIN orders o ON b.id = o.bakery_id
+      LEFT JOIN orders o ON b.id = o.bakery_id AND o.status != 'cancelled'
       GROUP BY b.id
       ORDER BY total_revenue DESC
       LIMIT 10
@@ -1389,7 +1413,7 @@ router.get('/bi-dashboard', (req, res) => {
         (SELECT COUNT(*) FROM products WHERE bakery_id = b.id) as total_products_2
       FROM bakeries b
       JOIN users u ON b.owner_id = u.id
-      LEFT JOIN orders o ON b.id = o.bakery_id
+      LEFT JOIN orders o ON b.id = o.bakery_id AND o.status != 'cancelled'
       WHERE b.status = 'active'
       GROUP BY b.id
       ORDER BY total_revenue ASC
@@ -1407,7 +1431,7 @@ router.get('/bi-dashboard', (req, res) => {
             totalProducts: b.total_products,
             recipeAdoption: b.total_products_2 > 0 ? parseFloat((b.recipe_items / b.total_products_2 * 100).toFixed(2)) : 0,
         }));
-        // Most active bakers (by order count this month)
+        // Most active bakers (by order count this month, exclude cancelled)
         const mostActiveBakers = db.prepare(`
       SELECT
         u.name as baker_name,
@@ -1418,6 +1442,7 @@ router.get('/bi-dashboard', (req, res) => {
       JOIN users u ON b.owner_id = u.id
       LEFT JOIN orders o ON b.id = o.bakery_id
         AND strftime('%Y-%m', o.created_at) = ?
+        AND o.status != 'cancelled'
       WHERE b.status = 'active'
       GROUP BY b.id
       ORDER BY order_count DESC
@@ -1475,7 +1500,7 @@ router.get('/bi-dashboard', (req, res) => {
         // ============================================
         // 5. PRODUCT INTELLIGENCE
         // ============================================
-        // Top 20 products by quantity sold
+        // Top 20 products by quantity sold (exclude cancelled orders)
         const topProducts = db.prepare(`
       SELECT
         p.name as product_name,
@@ -1487,6 +1512,8 @@ router.get('/bi-dashboard', (req, res) => {
       FROM products p
       JOIN bakeries b ON p.bakery_id = b.id
       LEFT JOIN order_items oi ON p.id = oi.product_id
+      LEFT JOIN orders o ON oi.order_id = o.id
+      WHERE o.status IS NULL OR o.status != 'cancelled'
       GROUP BY p.id
       ORDER BY quantity_sold DESC
       LIMIT 20
@@ -1499,7 +1526,7 @@ router.get('/bi-dashboard', (req, res) => {
             revenue: parseFloat(p.revenue.toFixed(2)),
             avg_price: parseFloat(p.avg_price.toFixed(2)),
         }));
-        // Category breakdown
+        // Category breakdown (exclude cancelled orders)
         const categoryBreakdown = db.prepare(`
       SELECT
         p.category,
@@ -1512,7 +1539,8 @@ router.get('/bi-dashboard', (req, res) => {
           ELSE 0 END as avg_margin
       FROM products p
       LEFT JOIN order_items oi ON p.id = oi.product_id
-      WHERE p.category IS NOT NULL
+      LEFT JOIN orders o ON oi.order_id = o.id
+      WHERE p.category IS NOT NULL AND (o.status IS NULL OR o.status != 'cancelled')
       GROUP BY p.category
       ORDER BY total_revenue DESC
     `).all();
@@ -1540,7 +1568,7 @@ router.get('/bi-dashboard', (req, res) => {
         const avgCustomersPerBakery = activeBakersCount.count > 0
             ? totalCustomersCount.count / activeBakersCount.count
             : 0;
-        // Top 10 customers by total spent
+        // Top 10 customers by total spent (exclude cancelled orders)
         const topCustomers = db.prepare(`
       SELECT
         c.name,
@@ -1549,7 +1577,7 @@ router.get('/bi-dashboard', (req, res) => {
         COALESCE(SUM(o.total), 0) as total_spent
       FROM customers c
       JOIN bakeries b ON c.bakery_id = b.id
-      LEFT JOIN orders o ON c.id = o.customer_id
+      LEFT JOIN orders o ON c.id = o.customer_id AND o.status != 'cancelled'
       GROUP BY c.id
       ORDER BY total_spent DESC
       LIMIT 10
@@ -1569,12 +1597,12 @@ router.get('/bi-dashboard', (req, res) => {
       FROM (
         SELECT c.id, SUM(o.total) as spent
         FROM customers c
-        LEFT JOIN orders o ON c.id = o.customer_id
+        LEFT JOIN orders o ON c.id = o.customer_id AND o.status != 'cancelled'
         GROUP BY c.id
         ORDER BY spent DESC
         LIMIT (SELECT MAX(1, COUNT(*) / 10) FROM customers)
       ) top10
-      LEFT JOIN orders o ON top10.id = o.customer_id
+      LEFT JOIN orders o ON top10.id = o.customer_id AND o.status != 'cancelled'
     `).get();
         const customerConcentration = totalRevenueAll.total > 0
             ? (topTenPercentCustomers.total / totalRevenueAll.total) * 100
