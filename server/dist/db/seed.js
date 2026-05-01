@@ -190,8 +190,8 @@ export function seedDatabase() {
             id: 'plan-starter',
             name: 'Iniciante',
             slug: 'starter',
-            monthlyPrice: 15,
-            annualPrice: 153,
+            monthlyPrice: 30,
+            annualPrice: 306,
             maxProducts: 50,
             maxCustomers: 100,
             maxOrdersPerMonth: 500,
@@ -208,8 +208,8 @@ export function seedDatabase() {
             id: 'plan-pro',
             name: 'Profissional',
             slug: 'pro',
-            monthlyPrice: 29,
-            annualPrice: 296,
+            monthlyPrice: 58,
+            annualPrice: 592,
             maxProducts: 200,
             maxCustomers: 500,
             maxOrdersPerMonth: 2000,
@@ -227,8 +227,8 @@ export function seedDatabase() {
             id: 'plan-enterprise',
             name: 'Empresa',
             slug: 'enterprise',
-            monthlyPrice: 49,
-            annualPrice: 500,
+            monthlyPrice: 98,
+            annualPrice: 1000,
             maxProducts: null,
             maxCustomers: null,
             maxOrdersPerMonth: null,
@@ -431,7 +431,7 @@ export function seedDatabase() {
         { tier: 'pro', count: 148, minProducts: 20, maxProducts: 40, minCustomers: 40, maxCustomers: 100, minOrderMonths: 6, maxOrderMonths: 10, ordersPerMonthMin: 60, ordersPerMonthMax: 150 },
         { tier: 'enterprise', count: 48, minProducts: 30, maxProducts: 50, minCustomers: 80, maxCustomers: 250, minOrderMonths: 8, maxOrderMonths: 12, ordersPerMonthMin: 150, ordersPerMonthMax: 300 },
     ];
-    const tierPrices = { free: 0, starter: 15, pro: 29, enterprise: 49 };
+    const tierPrices = { free: 0, starter: 30, pro: 58, enterprise: 98 };
     // Prepare INSERT statements once (reuse)
     const insertUserStmt = db.prepare(`
     INSERT INTO users (id, email, password, name, role, phone, created_at, last_login_at)
@@ -577,7 +577,7 @@ export function seedDatabase() {
                     periodEnd.setMonth(periodEnd.getMonth() + 1);
                     periodEnd.setDate(0);
                     const invoiceNumber = `JB-${periodStart.getFullYear()}-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
-                    const isFailed = m === 2 && bakerIndex % 4 === 0;
+                    const isFailed = false; // No failed payments
                     insertBillingHistoryStmt.run(uuidv4(), subscriptionId, bakeryId, tierPrices[tierTarget.tier], 'BRL', periodStart.toISOString(), periodEnd.toISOString(), chosenMethod, chosenMethod === 'pix' ? `PIX-${Math.floor(Math.random() * 1000000)}` : `REF-${Math.floor(Math.random() * 1000000)}`, isFailed ? 'failed' : 'paid', invoiceNumber, isFailed ? 'Payment failed - insufficient funds' : null, new Date(periodStart).toISOString());
                 }
             }

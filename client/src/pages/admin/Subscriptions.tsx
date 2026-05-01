@@ -47,9 +47,9 @@ interface DiscountModalState {
 
 const tierConfig = {
   free: { label: 'Gratuito', price: 0 },
-  starter: { label: 'Iniciante', price: 149 },
-  pro: { label: 'Profissional', price: 399 },
-  enterprise: { label: 'Empresarial', price: 999 },
+  starter: { label: 'Iniciante', price: 298 },
+  pro: { label: 'Profissional', price: 798 },
+  enterprise: { label: 'Empresarial', price: 1998 },
 };
 
 const statusConfig = {

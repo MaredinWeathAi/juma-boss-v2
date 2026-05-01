@@ -198,8 +198,8 @@ export function seedDatabase(): void {
       id: 'plan-starter',
       name: 'Iniciante',
       slug: 'starter',
-      monthlyPrice: 15,
-      annualPrice: 153,
+      monthlyPrice: 30,
+      annualPrice: 306,
       maxProducts: 50,
       maxCustomers: 100,
       maxOrdersPerMonth: 500,
@@ -216,8 +216,8 @@ export function seedDatabase(): void {
       id: 'plan-pro',
       name: 'Profissional',
       slug: 'pro',
-      monthlyPrice: 29,
-      annualPrice: 296,
+      monthlyPrice: 58,
+      annualPrice: 592,
       maxProducts: 200,
       maxCustomers: 500,
       maxOrdersPerMonth: 2000,
@@ -235,8 +235,8 @@ export function seedDatabase(): void {
       id: 'plan-enterprise',
       name: 'Empresa',
       slug: 'enterprise',
-      monthlyPrice: 49,
-      annualPrice: 500,
+      monthlyPrice: 98,
+      annualPrice: 1000,
       maxProducts: null,
       maxCustomers: null,
       maxOrdersPerMonth: null,
@@ -467,7 +467,7 @@ export function seedDatabase(): void {
     { tier: 'enterprise', count: 48, minProducts: 30, maxProducts: 50, minCustomers: 80, maxCustomers: 250, minOrderMonths: 8, maxOrderMonths: 12, ordersPerMonthMin: 150, ordersPerMonthMax: 300 },
   ];
 
-  const tierPrices: any = { free: 0, starter: 15, pro: 29, enterprise: 49 };
+  const tierPrices: any = { free: 0, starter: 30, pro: 58, enterprise: 98 };
 
   // Prepare INSERT statements once (reuse)
   const insertUserStmt = db.prepare(`
@@ -669,7 +669,7 @@ export function seedDatabase(): void {
           periodEnd.setDate(0);
 
           const invoiceNumber = `JB-${periodStart.getFullYear()}-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
-          const isFailed = m === 2 && bakerIndex % 4 === 0;
+          const isFailed = false; // No failed payments
 
           insertBillingHistoryStmt.run(
             uuidv4(),

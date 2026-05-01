@@ -27,10 +27,10 @@ try {
         console.log('Database seeded successfully on startup.');
     }
     else {
-        // Check if named demo accounts exist — if not, the seed is outdated and needs refresh
-        const mariaExists = db.prepare("SELECT id FROM users WHERE email = 'maria@jumaboss.com'").get();
-        if (!mariaExists) {
-            console.log('Named demo accounts missing — dropping all data and re-seeding...');
+        // Check if pricing is current (2x MRR update) — if starter subs still have old price, re-seed
+        const pricingCurrent = db.prepare("SELECT id FROM subscriptions WHERE tier = 'starter' AND monthly_price = 30 LIMIT 1").get();
+        if (!pricingCurrent) {
+            console.log('Pricing outdated — dropping all data and re-seeding...');
             // Drop all tables and re-create via initDB
             const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name != 'sqlite_sequence'").all();
             for (const t of tables) {
