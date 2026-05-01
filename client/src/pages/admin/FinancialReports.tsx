@@ -152,8 +152,8 @@ export default function FinancialReports() {
     );
   }
 
-  const totalMRR = data?.mrrHistory[data.mrrHistory.length - 1]?.total || 0;
-  const currentChurn = data?.churnTrend[data.churnTrend.length - 1]?.rate || 0;
+  const totalMRR = (data as any)?.currentMRR ?? (data?.mrrHistory[data.mrrHistory.length - 1]?.total || 0);
+  const currentChurn = (data as any)?.monthlyChurnRate ?? (data?.churnTrend[data.churnTrend.length - 1]?.rate || 0);
   const avgLTV = data?.ltvByTier
     ? data.ltvByTier.reduce((sum, t) => sum + t.ltv, 0) / data.ltvByTier.length
     : 0;

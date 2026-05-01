@@ -1079,7 +1079,31 @@ router.get('/financial-reports', (req, res) => {
       ORDER BY bh.created_at DESC
       LIMIT 20
     `).all();
+        // Current MRR = sum of monthly_price for all active/trialing subscriptions
+        const currentMRR = db.prepare(`
+      SELECT COALESCE(SUM(monthly_price), 0) as total
+      FROM subscriptions
+      WHERE status IN ('active', 'trialing')
+    `).get();
+        // Monthly churn rate: cancelled in the latest month vs total at start of month
+        // Use smart month fallback (same as BI endpoint)
+        const now = new Date();
+        let churnMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const churnMonthCheck = db.prepare(`SELECT COUNT(*) as count FROM subscriptions WHERE strftime('%Y-%m', started_at) = ?`).get(churnMonthStr);
+        if (churnMonthCheck.count === 0) {
+            const latestSubMonth = db.prepare(`SELECT strftime('%Y-%m', started_at) as month FROM subscriptions ORDER BY started_at DESC LIMIT 1`).get();
+            if (latestSubMonth?.month) {
+                churnMonthStr = latestSubMonth.month;
+            }
+        }
+        const churnMonthTotal = db.prepare(`SELECT COUNT(*) as count FROM subscriptions WHERE strftime('%Y-%m', started_at) <= ?`).get(churnMonthStr);
+        const churnMonthCancelled = db.prepare(`SELECT COUNT(*) as count FROM subscriptions WHERE status = 'cancelled' AND strftime('%Y-%m', updated_at) = ?`).get(churnMonthStr);
+        const monthlyChurnRate = churnMonthTotal.count > 0
+            ? (churnMonthCancelled.count / churnMonthTotal.count) * 100
+            : 0;
         res.json({
+            currentMRR: currentMRR.total || 0,
+            monthlyChurnRate: parseFloat(monthlyChurnRate.toFixed(1)),
             mrrHistory,
             paymentMethods: paymentMethodsWithPercentage,
             churnTrend,
