@@ -1233,10 +1233,20 @@ router.get('/cost-intelligence', (req, res) => {
 router.get('/bi-dashboard', (req, res) => {
     try {
         // Helper: Get current and last month strings
+        // If current month has no orders, fall back to the latest month with data
         const now = new Date();
-        const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        const lastMonthDate = new Date();
-        lastMonthDate.setMonth(lastMonthDate.getMonth() - 1);
+        let currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const currentMonthCheck = db.prepare(`SELECT COUNT(*) as count FROM orders WHERE strftime('%Y-%m', created_at) = ? AND status != 'cancelled'`).get(currentMonthStr);
+        if (currentMonthCheck.count === 0) {
+            // Fall back to latest month with data
+            const latestMonth = db.prepare(`SELECT strftime('%Y-%m', created_at) as month FROM orders WHERE status != 'cancelled' ORDER BY created_at DESC LIMIT 1`).get();
+            if (latestMonth?.month) {
+                currentMonthStr = latestMonth.month;
+            }
+        }
+        // Last month = one month before currentMonthStr
+        const [cmYear, cmMonth] = currentMonthStr.split('-').map(Number);
+        const lastMonthDate = new Date(cmYear, cmMonth - 2, 1); // month is 0-indexed
         const lastMonthStr = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
         // ============================================
         // 1. PLATFORM HEALTH METRICS
@@ -1306,10 +1316,25 @@ router.get('/bi-dashboard', (req, res) => {
             ? (recentlyChurned.count / totalBakeries.count) * 100
             : 0;
         const platformHealth = {
+            // Flat keys for frontend compatibility
+            totalRevenue: parseFloat(totalRevenueAllTime.value.toFixed(2)),
+            revenueThisMonth: parseFloat(thisMonthRevenue.value.toFixed(2)),
+            revenueLastMonth: parseFloat(lastMonthRevenue.value.toFixed(2)),
+            revenueGrowth: parseFloat(momRevenueGrowth.toFixed(2)),
+            totalOrders: totalOrdersAllTime.count,
+            ordersThisMonth: thisMonthOrders.count,
+            ordersLastMonth: lastMonthOrders.count,
+            ordersGrowth: parseFloat(momOrdersGrowth.toFixed(2)),
+            avgOrderValue: parseFloat(aovCurrentMonth.toFixed(2)),
+            avgOrderValueLastMonth: parseFloat(aovLastMonth.toFixed(2)),
+            activeBakers: activeBakers.count,
+            totalCustomers: totalCustomers.count,
+            churnRate: parseFloat(churnRate.toFixed(2)),
+            // Nested keys for backward compatibility (API consumers)
             revenue: {
-                allTime: totalRevenueAllTime.value,
-                thisMonth: thisMonthRevenue.value,
-                lastMonth: lastMonthRevenue.value,
+                allTime: parseFloat(totalRevenueAllTime.value.toFixed(2)),
+                thisMonth: parseFloat(thisMonthRevenue.value.toFixed(2)),
+                lastMonth: parseFloat(lastMonthRevenue.value.toFixed(2)),
                 momGrowthPct: parseFloat(momRevenueGrowth.toFixed(2)),
             },
             orders: {
@@ -1322,9 +1347,6 @@ router.get('/bi-dashboard', (req, res) => {
                 currentMonth: parseFloat(aovCurrentMonth.toFixed(2)),
                 lastMonth: parseFloat(aovLastMonth.toFixed(2)),
             },
-            activeBakers: activeBakers.count,
-            totalCustomers: totalCustomers.count,
-            churnRate: parseFloat(churnRate.toFixed(2)),
         };
         // ============================================
         // 2. REVENUE ANALYTICS (12 MONTHS)
